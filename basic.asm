@@ -139,14 +139,14 @@ BL40:
 BL50:
   .dw 0
   .dw 50
-  .db 0x0b ; END
+  .db 0x03, 0x0a, 0x00 ; GOTO 10
 
   .db 0xff
 
 
 execute_program:
 
-  ; set next instruction pointer to start of program buffer
+  ; set next line pointer to start of program buffer
   ldi r24, low(program_buffer)
   ldi r25, high(program_buffer)
 
@@ -160,7 +160,7 @@ execute_mainloop:
   mov XL, r24
   mov XH, r25
 
-  ; hold location of next line in r0:r1
+  ; hold location of next line in r24:r25
   ld r24, X+
   ld r25, X+
 
@@ -261,7 +261,53 @@ op_if:
   ret
 
 op_goto:
+  ; target line
+  ld r16, X+
+  ld r17, X+
+
+  ; get pointer to start of program buffer
+  ldi r18, low(program_buffer)
+  ldi r19, high(program_buffer)
+
+op_goto_search_loop:
+
+  ; if next line pointer is null, search is over
+  or r18, r19
+  breq op_goto_search_failed
+
+  ; prepare current line pointer
+  mov XL, r18
+  mov XH, r19
+
+  ; take location of next line to r18:r19
+  ld r18, X+
+  ld r19, X+
+
+  ; move line number to r20:r21
+  ld r20, X+
+  ld r21, X+
+
+  ; compare current line number in r20:r21 with the wanted one in r16:r17
+  cp r20, r16
+  brne op_goto_search_loop
+  cp r21, r17
+  brne op_goto_search_loop
+
+  ; found it, set the next line pointer for execution to here
+  ldi r16, 4
+  clr r17
+  sub XL, r16
+  sbc XH, r17
+  mov r24, XL
+  mov r25, XH
+
+  ; return from command; mainloop will continue at the line we set
   ret
+
+op_goto_search_failed:
+  ; XXX abort program
+  rjmp blink_forever
+
 
 op_input:
   ret
