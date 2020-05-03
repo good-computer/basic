@@ -229,7 +229,7 @@ execute_statement:
   ; add op table location
   clr r17
   add ZL, r16
-  adc ZL, r17
+  adc ZH, r17
 
   ; and jump to the handler. it will return to our caller
   ijmp
