@@ -1,7 +1,6 @@
 .device ATmega8
 
-.equ input_buffer   = 0x0060 ; bottom of RAM
-.equ program_buffer = 0x0060 ; XXX just screwing around atm
+.equ program_buffer = 0x0060 ; bottom of RAM
 
 .cseg
 .org 0x0000
@@ -45,56 +44,6 @@ main:
   rcall create_program
   rcall execute_program
   rjmp 0
-
-
-  ;rjmp blink_forever
-
-
-
-  ; fill the input buffer with a pretend useful thing
-  ; just until I get the usart connected!
-  ldi ZL, low(static_input_buffer*2)
-  ldi ZH, high(static_input_buffer*2)
-
-  ldi YL, low(input_buffer)
-  ldi YH, high(input_buffer)
-
-  lpm r16, Z+
-  st Y+, r16
-  cpi r16, 0x0
-  brne -3
-
-  ; XXX parse it
-
-
-static_input_buffer:
-  .db "PRINT \"HELLO WORLD\"", 0x0, 0x0
-
-
-parse_input_buffer:
-
-  ; reset Z to start of keyword table
-  ldi ZL, low(keyword_table)
-  ldi ZH, high(keyword_table)
-
-  ; reset Y to start of buffer
-  ldi YL, low(input_buffer)
-  ldi YH, high(input_buffer)
-
-  ; take the first byte
-  ; XXX
-  ld r16, Z+
-  breq parse_end_of_line
-
-parse_end_of_line:
-  ; XXX hcf
-
-keyword_table:
-
-  .db 'P','R','I','N','T'|0x80, 0x0
-
-  .dw 0
-
 
 
 create_program:
