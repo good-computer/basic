@@ -343,6 +343,7 @@ op_off:
   ret
 
 op_sleep:
+  ; 2s
   ldi  r18, 163
   ldi  r19, 87
   ldi  r20, 3
