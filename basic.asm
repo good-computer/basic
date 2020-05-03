@@ -43,10 +43,6 @@ reset:
 main:
 
   rcall create_program
-
-  ldi XL, low(program_buffer)
-  ldi XH, high(program_buffer)
-
   rcall execute_program
   rjmp 0
 
