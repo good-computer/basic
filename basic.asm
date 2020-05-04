@@ -1,6 +1,6 @@
 .device ATmega8
 
-.equ program_buffer = 0x0060 ; bottom of RAM
+.equ program_buffer = SRAM_START
 
 .cseg
 .org 0x0000
