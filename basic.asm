@@ -34,12 +34,30 @@ reset:
   out SPL, r16
   out SPH, r17
 
+  ; usart tx/rx enable
+  ldi r16, (1<<RXEN | 1<<TXEN)
+  out UCSRB, r16
+
+  ; usart frame config: 8N1 (8 data bits => UCSZ2:0 = 011)
+  ldi r16, (1<<URSEL) | (1<<UCSZ0) | (1<<UCSZ1)
+  out UCSRC, r16
+
+  ; usart 38400 baud at 16MHz => UBRR = 25
+  ldi r16, 25
+  ldi r17, 0
+  out UBRRL, r16
+  out UBRRH, r17
+
   ; PB1 for debug
   ldi r16, (1<<PB1)
   out DDRB, r16
 
 
 main:
+
+  ldi ZL, low(text_banner*2)
+  ldi ZH, high(text_banner*2)
+  rcall usart_print
 
   rcall create_program
   rcall execute_program
@@ -330,3 +348,123 @@ blink_forever:
   brne -5
 
   rjmp blink_forever
+
+
+; receive a byte from the usart
+; outputs:
+;   r16: received byte
+usart_rx_byte:
+  sbis UCSRA, RXC
+  rjmp -1
+
+  in r16, UDR
+
+  ret
+
+
+; transmit a byte via the usart
+; inputs:
+;   r16: byte to send
+usart_tx_byte:
+  sbis UCSRA, UDRE
+  rjmp -1
+
+  out UDR, r16
+
+  ret
+
+
+; transmit a null-terminated string via the usart
+; inputs:
+;   Z: pointer to start of string in program memory
+usart_print:
+  lpm r16, Z+
+  cpi r16, 0
+  breq +3
+
+  rcall usart_tx_byte
+  rjmp usart_print
+
+  ret
+
+
+; transmit a hex representation of a byte via the usart
+; inputs:
+;   r16: byte to send
+usart_tx_byte_hex:
+  push r16
+  clr r17
+
+  ldi ZL, low(hex_digits*2)
+  ldi ZH, high(hex_digits*2)
+
+  swap r16
+  andi r16, 0x0f
+  add ZL, r16
+  adc ZH, r17
+  lpm r16, Z
+  rcall usart_tx_byte
+
+  ldi ZL, low(hex_digits*2)
+  ldi ZH, high(hex_digits*2)
+
+  pop r16
+  andi r16, 0x0f
+  add ZL, r16
+  adc ZH, r17
+  lpm r16, Z
+  rcall usart_tx_byte
+
+  ret
+
+hex_digits:
+  .db "0123456789abcdef"
+
+
+; transmit a hex representation of a block of data via the usart
+; inputs:
+;   Z: pointer to start of data in sram
+;   r16: number of bytes to transmit
+usart_tx_bytes_hex:
+  mov r17, r16
+  ldi r18, 8
+
+  ldi r16, ' '
+  rcall usart_tx_byte
+  rcall usart_tx_byte
+
+usart_tx_bytes_hex_next:
+  ld r16, Z+
+  rcall usart_tx_byte_hex
+
+  dec r17
+  breq usart_tx_bytes_hex_done
+
+  ldi r16, ' '
+  dec r18
+  brne usart_tx_bytes_hex_print_gap
+
+  ldi r18, 8
+
+  ldi r16, 0xa
+  rcall usart_tx_byte
+  ldi r16, 0xd
+  rcall usart_tx_byte
+  ldi r16, ' '
+  rcall usart_tx_byte
+
+usart_tx_bytes_hex_print_gap:
+  rcall usart_tx_byte
+  rjmp usart_tx_bytes_hex_next
+
+usart_tx_bytes_hex_done:
+  ldi r16, 0xa
+  rcall usart_tx_byte
+  ldi r16, 0xd
+  rcall usart_tx_byte
+
+  ret
+
+
+text_banner:
+  .db "LOL BASIC", 0xa, 0xd, 0
