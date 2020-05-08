@@ -5,25 +5,25 @@
 .cseg
 .org 0x0000
 
-    rjmp reset
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
-    reti
+  rjmp reset
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
+  reti
 
 
 reset:
