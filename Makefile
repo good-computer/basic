@@ -11,3 +11,7 @@ install: all
 %.hex: %.asm
 	gavrasm $<
 
+serial:
+	tio -b 38400 /dev/ttyUSB0
+
+.PHONY: serial
