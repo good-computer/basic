@@ -14,4 +14,4 @@ install: all
 serial:
 	picocom -b 38400 /dev/ttyUSB0
 
-.PHONY: serial
+.PHONY: install serial
