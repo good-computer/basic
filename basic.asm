@@ -392,6 +392,9 @@ usart_print:
 ; inputs:
 ;   r16: byte to send
 usart_tx_byte_hex:
+  push ZL
+  push ZH
+
   push r16
   clr r17
 
@@ -415,6 +418,9 @@ usart_tx_byte_hex:
   lpm r16, Z
   rcall usart_tx_byte
 
+  pop ZH
+  pop ZL
+
   ret
 
 hex_digits:
@@ -423,11 +429,11 @@ hex_digits:
 
 ; transmit a hex representation of a block of data via the usart
 ; inputs:
-;   Z: pointer to start of data in sram
+;   Y: pointer to start of data in sram
 ;   r16: number of bytes to transmit
 usart_tx_bytes_hex:
-  mov r17, r16
-  ldi r18, 8
+  mov r19, r16
+  ldi r20, 8
 
   ldi r16, ' '
   rcall usart_tx_byte
@@ -437,14 +443,14 @@ usart_tx_bytes_hex_next:
   ld r16, Z+
   rcall usart_tx_byte_hex
 
-  dec r17
+  dec r19
   breq usart_tx_bytes_hex_done
 
   ldi r16, ' '
-  dec r18
+  dec r20
   brne usart_tx_bytes_hex_print_gap
 
-  ldi r18, 8
+  ldi r20, 8
 
   ldi r16, 0xa
   rcall usart_tx_byte
