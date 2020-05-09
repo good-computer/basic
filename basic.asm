@@ -65,7 +65,7 @@ main:
   rcall usart_print
 
 
-immediate_loop:
+main_loop:
 
   ldi ZL, low(text_prompt*2)
   ldi ZH, high(text_prompt*2)
@@ -80,7 +80,7 @@ immediate_loop:
 
   rcall parse_line
 
-  rjmp immediate_loop
+  rjmp main_loop
 
 
   rcall create_program
