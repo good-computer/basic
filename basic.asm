@@ -1,6 +1,11 @@
 .device ATmega8
 
-.equ program_buffer = SRAM_START
+; XXX I wonder if there's a better way to set up a memory map
+.equ input_buffer     = SRAM_START
+.equ input_buffer_end = input_buffer + 0x7f
+
+.equ program_buffer   = input_buffer_end + 1
+
 
 .cseg
 .org 0x0000
@@ -59,9 +64,116 @@ main:
   ldi ZH, high(text_banner*2)
   rcall usart_print
 
+
+immediate_loop:
+
+  ldi ZL, low(text_prompt*2)
+  ldi ZH, high(text_prompt*2)
+  rcall usart_print
+
+  rcall usart_line_input
+
+  ;ldi ZL, low(input_buffer)
+  ;ldi ZH, high(input_buffer)
+  ;ldi r16, 0x80
+  ;rcall usart_tx_bytes_hex
+
+  rcall parse_line
+
+  rjmp immediate_loop
+
+
   rcall create_program
   rcall execute_program
   rjmp 0
+
+
+parse_line:
+
+  ; start of buffer
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+
+  rcall parse_number
+  brvc +2
+  rjmp blink_forever
+
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+  st X+, r2
+  st X+, r3
+
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+  ldi r16, 0x2
+  rcall usart_tx_bytes_hex
+
+  ret
+
+
+; parse an ascii number
+; inputs:
+;   X: pointer to ascii digit sequence, will be moved
+; outputs:
+;   r2: low byte of number
+;   r3: high byte of number
+;   T:  set if we actually parsed something
+;   V:  set if we overflowed 16 bits
+parse_number:
+
+  clt
+  clv
+
+  ; accumulator
+  clr r2
+  clr r3
+
+  ldi r18, 10 ; for multiplying by 10 repeatedly
+  clr r19
+
+parse_number_loop:
+  ld r17, X+
+  cpi r17, 0x30
+  brsh +2
+  ret
+  cpi r17, 0x3a
+  brlo +2
+  ret
+
+  ; multiply accumulator low byte by 10
+  mul r2, r18
+  mov r5, r0
+  mov r6, r1
+
+  ; multiply accumulator high byte by 10
+  mul r3, r18
+  add r6, r0
+  brcc +2
+  inc r1
+  cp r1, r19
+  breq +3
+
+  ; overflowed, flag and abort
+  sev
+  ret
+
+  ; actually read something, flag this
+  set
+
+  ; reload the accumulator after multiplying
+  mov r2, r5
+  mov r3, r6
+
+  ; convert digit to value, and add
+  andi r17, 0xf
+  add r2, r17
+  brcc parse_number_loop
+  inc r3
+  brne parse_number_loop
+
+  ; overflowed, flag and abort
+  sev
+  ret
 
 
 create_program:
@@ -388,6 +500,86 @@ usart_print:
   ret
 
 
+; receive a line of input into the input buffer, with simple editing controls
+usart_line_input:
+
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+
+uli_next_char:
+  rcall usart_rx_byte
+
+  ; printable ascii range is 0x20-0x7e
+  ; XXX any computer made in 2020 needs to support unicode
+  cpi r16, 0x20
+  brlo uli_handle_control_char
+  cpi r16, 0x7f
+  brsh uli_handle_control_char
+
+  ; something printable, make sure there's room in the buffer for it
+  cpi XL, low(input_buffer_end)
+  brne +3
+  cpi XH, high(input_buffer_end)
+  breq uli_next_char
+
+  ; append to buffer and echo it
+  st X+, r16
+  rcall usart_tx_byte
+
+  rjmp uli_next_char
+
+uli_handle_control_char:
+
+  ; enter/return
+  cpi r16, 0x0d
+  brne +2
+  rjmp uli_do_enter
+
+  ; delete/backspace
+  cpi r16, 0x7f
+  brne +2
+  rjmp uli_do_backspace
+
+  ; ignore everything else
+  rjmp uli_next_char
+
+uli_do_enter:
+  ; zero end of buffer
+  clr r16
+  st X+, r16
+
+  ; echo newline
+  ldi r16, 0xa
+  rcall usart_tx_byte
+  ldi r16, 0xd
+  rcall usart_tx_byte
+
+  ; that's all the input!
+  ret
+
+uli_do_backspace:
+  ; start-of-buffer check
+  cpi XL, low(input_buffer)
+  brne +3
+  cpi XH, high(input_buffer)
+  breq uli_next_char
+
+  ; move buffer pointer back
+  dec XL
+  brpl +2
+  dec XH
+
+  ; echo destructive backspace
+  ldi r16, 0x08
+  rcall usart_tx_byte
+  ldi r16, 0x20
+  rcall usart_tx_byte
+  ldi r16, 0x08
+  rcall usart_tx_byte
+
+  rjmp uli_next_char
+
+
 ; transmit a hex representation of a byte via the usart
 ; inputs:
 ;   r16: byte to send
@@ -473,4 +665,6 @@ usart_tx_bytes_hex_done:
 
 
 text_banner:
-  .db "LOL BASIC", 0xa, 0xd, 0
+  .db 0xa, 0xd, "GOOD COMPUTER", 0xa, 0xd, 0
+text_prompt:
+  .db 0xa, 0xd, "BASIC> ", 0
