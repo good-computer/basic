@@ -98,6 +98,10 @@ parse_line:
   brvc +2
   rjmp blink_forever
 
+  ; no line number? do the immediate mode thing
+  brtc immediate_mode
+
+  ; line number, set up to parse and store the statement
   ldi XL, low(input_buffer)
   ldi XH, high(input_buffer)
   st X+, r2
@@ -106,10 +110,88 @@ parse_line:
   ldi ZL, low(input_buffer)
   ldi ZH, high(input_buffer)
   ldi r16, 0x2
-  rcall usart_tx_bytes_hex
+  rjmp usart_tx_bytes_hex
+
+immediate_mode:
+  rcall parse_statement
 
   ret
 
+
+parse_statement:
+
+  ; take copy of pointer to start of statement, so we can reset it
+  mov r2, XL
+  mov r3, XH
+
+  ; start of statement table
+  ldi ZL, low(statement_table*2)
+  ldi ZH, high(statement_table*2)
+
+  ; walk both strings, comparing as we go. if we fail a compare, reset X, jump
+  ; Z forward to next string
+statement_loop:
+  lpm r17, Z+
+
+  ; if its below the ascii caps area, then its an opcode and we matched
+  cpi r17, 0x40
+  brlo statement_end
+
+  ; load the next char of the input statement and compare
+  ldi r16, 'i'
+  rcall usart_tx_byte
+  ld r16, X+
+  rcall usart_tx_byte
+  cp r16, r17
+  breq statement_loop
+
+  ; chars didn't match, so we have to start over on the next statement
+
+  ; reset X to start of input statement
+  mov XL, r2
+  mov XH, r3
+
+  ; walk Z forward to the next statement
+  ldi r16, '-'
+  rcall usart_tx_byte
+
+  lpm r17, Z+
+  cpi r17, 0x40
+  brsh -2
+
+  rjmp statement_loop
+
+statement_end:
+
+  ; but if its zero, we hit the end of the statement table, so it wasn't found
+  or r17, r17
+  brne +2
+  rjmp blink_forever ; XXX not found
+
+  ; print the opcode
+  mov r16, r17
+  rjmp usart_tx_byte_hex
+
+  
+
+statement_table:
+  .db "PRINT",  0x1
+  .db "IF",     0x2
+  .db "GOTO",   0x3
+  .db "INPUT",  0x4
+  .db "LET",    0x5
+  .db "GOSUB",  0x6
+  .db "RETURN", 0x7
+  .db "CLEAR",  0x8
+  .db "LIST",   0x9
+  .db "RUN",    0xa
+  .db "END",    0xb
+
+  .db "ON",     0xc
+  .db "OFF",    0xd
+  .db "SLEEP",  0xe
+
+  .db 0
 
 ; parse an ascii number
 ; inputs:
@@ -121,6 +203,11 @@ parse_line:
 ;   V:  set if we overflowed 16 bits
 parse_number:
 
+  ; store X in case we need to rewind
+  mov r7, XL
+  mov r8, XH
+
+  ; clear result flags
   clt
   clv
 
@@ -132,13 +219,17 @@ parse_number:
   clr r19
 
 parse_number_loop:
+  ; get input char and check range
   ld r17, X+
   cpi r17, 0x30
-  brsh +2
+  brsh +3
+
+  ; out of range, roll X back one char and return
+  ld r17, -X
   ret
+
   cpi r17, 0x3a
-  brlo +2
-  ret
+  brsh -3
 
   ; multiply accumulator low byte by 10
   mul r2, r18
@@ -151,11 +242,7 @@ parse_number_loop:
   brcc +2
   inc r1
   cp r1, r19
-  breq +3
-
-  ; overflowed, flag and abort
-  sev
-  ret
+  brne parse_number_overflow
 
   ; actually read something, flag this
   set
@@ -171,9 +258,13 @@ parse_number_loop:
   inc r3
   brne parse_number_loop
 
-  ; overflowed, flag and abort
+  ; overflowed, restore X flag and abort
+parse_number_overflow:
+  mov XL, r7
+  mov XH, r8
   sev
   ret
+
 
 
 create_program:
