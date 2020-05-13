@@ -1,4 +1,5 @@
-.device ATmega8
+;.device ATmega8
+.include "m8def.inc"
 
 ; XXX I wonder if there's a better way to set up a memory map
 .equ input_buffer     = SRAM_START
@@ -95,7 +96,7 @@ parse_line:
   ldi XH, high(input_buffer)
 
   rcall parse_number
-  brvc +2
+  brvc PC+2
   rjmp blink_forever
 
   ; no line number? do the immediate mode thing
@@ -157,7 +158,7 @@ statement_loop:
 
   lpm r17, Z+
   cpi r17, 0x40
-  brsh -2
+  brsh PC-2
 
   rjmp statement_loop
 
@@ -165,7 +166,7 @@ statement_end:
 
   ; but if its zero, we hit the end of the statement table, so it wasn't found
   or r17, r17
-  brne +2
+  brne PC+2
   rjmp blink_forever ; XXX not found
 
   ; print the opcode
@@ -222,14 +223,14 @@ parse_number_loop:
   ; get input char and check range
   ld r17, X+
   cpi r17, 0x30
-  brsh +3
+  brsh PC+3
 
   ; out of range, roll X back one char and return
   ld r17, -X
   ret
 
   cpi r17, 0x3a
-  brsh -3
+  brsh PC-3
 
   ; multiply accumulator low byte by 10
   mul r2, r18
@@ -239,7 +240,7 @@ parse_number_loop:
   ; multiply accumulator high byte by 10
   mul r3, r18
   add r6, r0
-  brcc +2
+  brcc PC+2
   inc r1
   cp r1, r19
   brne parse_number_overflow
@@ -281,7 +282,7 @@ create_program:
   lpm r16, Z+
   st X+, r16
   cpi r16, 0xff
-  brne -3
+  brne PC-3
 
   ret
 
@@ -331,7 +332,7 @@ execute_mainloop:
   ld r25, X+
 
   ; skip the line number
-  adiw X, 2
+  adiw XL, 2
 
   ; statement now at X, execute it
   rcall execute_statement
@@ -514,11 +515,11 @@ op_sleep:
   ldi  r19, 87
   ldi  r20, 3
   dec  r20
-  brne -1
+  brne PC-1
   dec  r19
-  brne -3
+  brne PC-3
   dec  r18
-  brne -5
+  brne PC-5
   ret
 
 
@@ -531,11 +532,11 @@ blink_forever:
   ldi  r19, 150
   ldi  r20, 128
   dec  r20
-  brne -1
+  brne PC-1
   dec  r19
-  brne -3
+  brne PC-3
   dec  r18
-  brne -5
+  brne PC-5
 
   cbi PORTB, PB1
 
@@ -544,11 +545,11 @@ blink_forever:
   ldi  r19, 150
   ldi  r20, 128
   dec  r20
-  brne -1
+  brne PC-1
   dec  r19
-  brne -3
+  brne PC-3
   dec  r18
-  brne -5
+  brne PC-5
 
   rjmp blink_forever
 
@@ -558,7 +559,7 @@ blink_forever:
 ;   r16: received byte
 usart_rx_byte:
   sbis UCSRA, RXC
-  rjmp -1
+  rjmp PC-1
 
   in r16, UDR
 
@@ -570,7 +571,7 @@ usart_rx_byte:
 ;   r16: byte to send
 usart_tx_byte:
   sbis UCSRA, UDRE
-  rjmp -1
+  rjmp PC-1
 
   out UDR, r16
 
@@ -583,7 +584,7 @@ usart_tx_byte:
 usart_print:
   lpm r16, Z+
   cpi r16, 0
-  breq +3
+  breq PC+3
 
   rcall usart_tx_byte
   rjmp usart_print
@@ -609,7 +610,7 @@ uli_next_char:
 
   ; something printable, make sure there's room in the buffer for it
   cpi XL, low(input_buffer_end)
-  brne +3
+  brne PC+3
   cpi XH, high(input_buffer_end)
   breq uli_next_char
 
@@ -623,12 +624,12 @@ uli_handle_control_char:
 
   ; enter/return
   cpi r16, 0x0d
-  brne +2
+  brne PC+2
   rjmp uli_do_enter
 
   ; delete/backspace
   cpi r16, 0x7f
-  brne +2
+  brne PC+2
   rjmp uli_do_backspace
 
   ; ignore everything else
@@ -651,13 +652,13 @@ uli_do_enter:
 uli_do_backspace:
   ; start-of-buffer check
   cpi XL, low(input_buffer)
-  brne +3
+  brne PC+3
   cpi XH, high(input_buffer)
   breq uli_next_char
 
   ; move buffer pointer back
   dec XL
-  brpl +2
+  brpl PC+2
   dec XH
 
   ; echo destructive backspace
