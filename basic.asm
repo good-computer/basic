@@ -139,10 +139,7 @@ statement_loop:
   brlo statement_end
 
   ; load the next char of the input statement and compare
-  ldi r16, 'i'
-  rcall usart_tx_byte
   ld r16, X+
-  rcall usart_tx_byte
   cp r16, r17
   breq statement_loop
 
@@ -153,9 +150,6 @@ statement_loop:
   mov XH, r3
 
   ; walk Z forward to the next statement
-  ldi r16, '-'
-  rcall usart_tx_byte
-
   lpm r17, Z+
   cpi r17, 0x40
   brsh PC-2
@@ -176,23 +170,24 @@ statement_end:
   
 
 statement_table:
-  .db "PRINT",  0x1
-  .db "IF",     0x2
-  .db "GOTO",   0x3
-  .db "INPUT",  0x4
-  .db "LET",    0x5
-  .db "GOSUB",  0x6
-  .db "RETURN", 0x7
-  .db "CLEAR",  0x8
-  .db "LIST",   0x9
-  .db "RUN",    0xa
-  .db "END",    0xb
+  .db "PRINT",  0x1, \
+      "IF",     0x2, \
+      "GOTO",   0x3, \
+      "INPUT",  0x4, \
+      "LET",    0x5, \
+      "GOSUB",  0x6, \
+      "RETURN", 0x7, \
+      "CLEAR",  0x8, \
+      "LIST",   0x9, \
+      "RUN",    0xa, \
+      "END",    0xb, \
+                     \
+      "ON",     0xc, \
+      "OFF",    0xd, \
+      "SLEEP",  0xe, \
+                     \
+      0
 
-  .db "ON",     0xc
-  .db "OFF",    0xd
-  .db "SLEEP",  0xe
-
-  .db 0
 
 ; parse an ascii number
 ; inputs:
