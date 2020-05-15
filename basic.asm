@@ -299,9 +299,32 @@ keyword_end:
   ldi r25, error_no_such_keyword
   ret
 
-  ; print the opcode
-  mov r16, r17
-  rjmp usart_tx_byte_hex
+  ; XXX hackish immediate mode, set Y to reuse the input buffer for the op buffer
+  ldi YL, low(input_buffer)
+  ldi YH, low(input_buffer)
+
+  ; store the opcode
+  st Y+, r17
+
+  ; set up for rest of statement parse
+  ldi ZL, low(keyword_parse_table)
+  ldi ZH, high(keyword_parse_table)
+
+  ; add opcode to get the parser vector
+  add ZL, r17
+  brcc PC+2
+  inc ZH
+
+  ; and call it!
+  icall
+
+  ; XXX dump the bytecode buffer
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+  ldi r16, 0x10
+  rcall usart_tx_bytes_hex
+
+  ret
 
 
 keyword_table:
@@ -323,6 +346,41 @@ keyword_table:
                      \
       0
 
+keyword_parse_table:
+  .dw 0             ; 0x00 [reserved]
+  rjmp parse_print  ; 0x01 PRINT expr-list
+  rjmp parse_if     ; 0x02 IF expression relop expression THEN statement
+  rjmp parse_goto   ; 0x03 GOTO expression
+  rjmp parse_input  ; 0x04 INPUT var-list
+  rjmp parse_let    ; 0x05 LET var = expression
+  rjmp parse_gosub  ; 0x06 GOSUB expression
+  ret               ; 0x07 RETURN
+  ret               ; 0x08 CLEAR
+  ret               ; 0x09 LIST
+  ret               ; 0x0a RUN
+  ret               ; 0x0b END
+  ret               ; 0x0c [ON]
+  ret               ; 0x0d [OFF]
+  ret               ; 0x0e [SLEEP]
+
+
+parse_print:
+  ret
+
+parse_if:
+  ret
+
+parse_goto:
+  ret
+
+parse_input:
+  ret
+
+parse_let:
+  ret
+
+parse_gosub:
+  ret
 
 
 
