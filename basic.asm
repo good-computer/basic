@@ -61,13 +61,25 @@ reset:
 
 main:
 
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rcall usart_print
   ldi ZL, low(text_banner*2)
   ldi ZH, high(text_banner*2)
+  rcall usart_print
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
   rcall usart_print
 
 
 main_loop:
 
+  ; clear last error
+  clr r25
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rcall usart_print
   ldi ZL, low(text_prompt*2)
   ldi ZH, high(text_prompt*2)
   rcall usart_print
@@ -81,12 +93,47 @@ main_loop:
 
   rcall parse_line
 
+  ; error check
+  or r25, r25
+  breq main_loop
+
+  rcall handle_error
   rjmp main_loop
 
 
-  rcall create_program
-  rcall execute_program
-  rjmp 0
+  ;rcall create_program
+  ;rcall execute_program
+  ;rjmp 0
+
+
+; unrecoverable error
+; inputs:
+;   r25: error code
+handle_error:
+  ldi r16, '?'
+  rcall usart_tx_byte
+
+  dec r25
+
+  ldi ZL, low(error_lookup_table*2)
+  ldi ZH, high(error_lookup_table*2)
+  add ZL, r25
+  brcc PC+2
+  inc ZL
+
+  lpm XL, Z+
+  lpm XH, Z+
+
+  mov ZL, XL
+  mov ZH, XH
+  rcall usart_print
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rjmp usart_print
+
+error_lookup_table:
+  .dw text_error_no_such_keyword*2
 
 
 parse_line:
@@ -167,14 +214,16 @@ statement_end:
 
   ; but if its zero, we hit the end of the statement table, so it wasn't found
   or r17, r17
-  brne PC+2
-  rjmp blink_forever ; XXX not found
+  brne PC+3
+
+  ldi r25, 0x1
+  ret
 
   ; print the opcode
   mov r16, r17
   rjmp usart_tx_byte_hex
 
-  
+
 
 statement_table:
   .db "PRINT",  0x1, \
@@ -758,7 +807,13 @@ usart_tx_bytes_hex_done:
   ret
 
 
+text_newline:
+  .db 0xa, 0xd, 0
+
 text_banner:
-  .db 0xa, 0xd, "GOOD COMPUTER", 0xa, 0xd, 0
+  .db "GOOD COMPUTER", 0
 text_prompt:
-  .db 0xa, 0xd, "BASIC> ", 0
+  .db "BASIC> ", 0
+
+text_error_no_such_keyword:
+  .db "NO SUCH KEYWORD", 0
