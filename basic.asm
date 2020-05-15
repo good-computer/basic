@@ -179,40 +179,40 @@ parse_statement:
   mov r2, XL
   mov r3, XH
 
-  ; start of statement table
-  ldi ZL, low(statement_table*2)
-  ldi ZH, high(statement_table*2)
+  ; start of keyword table
+  ldi ZL, low(keyword_table*2)
+  ldi ZH, high(keyword_table*2)
 
   ; walk both strings, comparing as we go. if we fail a compare, reset X, jump
   ; Z forward to next string
-statement_loop:
+keyword_loop:
   lpm r17, Z+
 
   ; if its below the ascii caps area, then its an opcode and we matched
   cpi r17, 0x40
-  brlo statement_end
+  brlo keyword_end
 
-  ; load the next char of the input statement and compare
+  ; load the next char of the input keyword and compare
   ld r16, X+
   cp r16, r17
-  breq statement_loop
+  breq keyword_loop
 
-  ; chars didn't match, so we have to start over on the next statement
+  ; chars didn't match, so we have to start over on the next keyword
 
-  ; reset X to start of input statement
+  ; reset X to start of input keyword
   mov XL, r2
   mov XH, r3
 
-  ; walk Z forward to the next statement
+  ; walk Z forward to the next keyword
   lpm r17, Z+
   cpi r17, 0x40
   brsh PC-2
 
-  rjmp statement_loop
+  rjmp keyword_loop
 
-statement_end:
+keyword_end:
 
-  ; but if its zero, we hit the end of the statement table, so it wasn't found
+  ; but if its zero, we hit the end of the keyword table, so it wasn't found
   or r17, r17
   brne PC+3
 
@@ -225,7 +225,7 @@ statement_end:
 
 
 
-statement_table:
+keyword_table:
   .db "PRINT",  0x1, \
       "IF",     0x2, \
       "GOTO",   0x3, \
