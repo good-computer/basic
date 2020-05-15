@@ -177,78 +177,6 @@ immediate_mode:
   ret
 
 
-parse_statement:
-
-  ; take copy of pointer to start of statement, so we can reset it
-  mov r2, XL
-  mov r3, XH
-
-  ; start of keyword table
-  ldi ZL, low(keyword_table*2)
-  ldi ZH, high(keyword_table*2)
-
-  ; walk both strings, comparing as we go. if we fail a compare, reset X, jump
-  ; Z forward to next string
-keyword_loop:
-  lpm r17, Z+
-
-  ; if its below the ascii caps area, then its an opcode and we matched
-  cpi r17, 0x40
-  brlo keyword_end
-
-  ; load the next char of the input keyword and compare
-  ld r16, X+
-  cp r16, r17
-  breq keyword_loop
-
-  ; chars didn't match, so we have to start over on the next keyword
-
-  ; reset X to start of input keyword
-  mov XL, r2
-  mov XH, r3
-
-  ; walk Z forward to the next keyword
-  lpm r17, Z+
-  cpi r17, 0x40
-  brsh PC-2
-
-  rjmp keyword_loop
-
-keyword_end:
-
-  ; but if its zero, we hit the end of the keyword table, so it wasn't found
-  or r17, r17
-  brne PC+3
-
-  ldi r25, error_no_such_keyword
-  ret
-
-  ; print the opcode
-  mov r16, r17
-  rjmp usart_tx_byte_hex
-
-
-
-keyword_table:
-  .db "PRINT",  0x1, \
-      "IF",     0x2, \
-      "GOTO",   0x3, \
-      "INPUT",  0x4, \
-      "LET",    0x5, \
-      "GOSUB",  0x6, \
-      "RETURN", 0x7, \
-      "CLEAR",  0x8, \
-      "LIST",   0x9, \
-      "RUN",    0xa, \
-      "END",    0xb, \
-                     \
-      "ON",     0xc, \
-      "OFF",    0xd, \
-      "SLEEP",  0xe, \
-                     \
-      0
-
-
 ; parse an ascii number
 ; inputs:
 ;   X: pointer to ascii digit sequence, will be moved
@@ -320,6 +248,81 @@ parse_number_overflow:
   mov XH, r8
   sev
   ret
+
+
+; parse a statment (keyword + args)
+; inputs:
+;   X: pointer to statement text, will be moved
+parse_statement:
+
+  ; take copy of pointer to start of statement, so we can reset it
+  mov r2, XL
+  mov r3, XH
+
+  ; start of keyword table
+  ldi ZL, low(keyword_table*2)
+  ldi ZH, high(keyword_table*2)
+
+  ; walk both strings, comparing as we go. if we fail a compare, reset X, jump
+  ; Z forward to next string
+keyword_loop:
+  lpm r17, Z+
+
+  ; if its below the ascii caps area, then its an opcode and we matched
+  cpi r17, 0x40
+  brlo keyword_end
+
+  ; load the next char of the input keyword and compare
+  ld r16, X+
+  cp r16, r17
+  breq keyword_loop
+
+  ; chars didn't match, so we have to start over on the next keyword
+
+  ; reset X to start of input keyword
+  mov XL, r2
+  mov XH, r3
+
+  ; walk Z forward to the next keyword
+  lpm r17, Z+
+  cpi r17, 0x40
+  brsh PC-2
+
+  rjmp keyword_loop
+
+keyword_end:
+
+  ; but if its zero, we hit the end of the keyword table, so it wasn't found
+  or r17, r17
+  brne PC+3
+
+  ldi r25, error_no_such_keyword
+  ret
+
+  ; print the opcode
+  mov r16, r17
+  rjmp usart_tx_byte_hex
+
+
+keyword_table:
+  .db "PRINT",  0x1, \
+      "IF",     0x2, \
+      "GOTO",   0x3, \
+      "INPUT",  0x4, \
+      "LET",    0x5, \
+      "GOSUB",  0x6, \
+      "RETURN", 0x7, \
+      "CLEAR",  0x8, \
+      "LIST",   0x9, \
+      "RUN",    0xa, \
+      "END",    0xb, \
+                     \
+      "ON",     0xc, \
+      "OFF",    0xd, \
+      "SLEEP",  0xe, \
+                     \
+      0
+
 
 
 
