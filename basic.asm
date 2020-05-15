@@ -118,12 +118,15 @@ handle_error:
   rcall usart_tx_byte
 
   dec r25
+  lsl r25
 
   ldi ZL, low(error_lookup_table*2)
   ldi ZH, high(error_lookup_table*2)
   add ZL, r25
   brcc PC+2
   inc ZL
+
+  clr r25
 
   lpm XL, Z+
   lpm XH, Z+
@@ -172,7 +175,27 @@ parse_line:
   rjmp usart_tx_bytes_hex
 
 immediate_mode:
+
+  ; reuse the input buffer for the op buffer
+  ldi YL, low(input_buffer)
+  ldi YH, high(input_buffer)
+
   rcall parse_statement
+
+  or r25, r25
+  breq PC+2
+  ret
+
+  ; XXX dump the bytecode buffer
+  ;ldi ZL, low(input_buffer)
+  ;ldi ZH, high(input_buffer)
+  ;ldi r16, 0x10
+  ;rcall usart_tx_bytes_hex
+
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+
+  rcall execute_statement
 
   ret
 
@@ -299,10 +322,6 @@ keyword_end:
   ldi r25, error_no_such_keyword
   ret
 
-  ; XXX hackish immediate mode, set Y to reuse the input buffer for the op buffer
-  ldi YL, low(input_buffer)
-  ldi YH, low(input_buffer)
-
   ; store the opcode
   st Y+, r17
 
@@ -315,16 +334,8 @@ keyword_end:
   brcc PC+2
   inc ZH
 
-  ; and call it!
-  icall
-
-  ; XXX dump the bytecode buffer
-  ldi ZL, low(input_buffer)
-  ldi ZH, high(input_buffer)
-  ldi r16, 0x10
-  rcall usart_tx_bytes_hex
-
-  ret
+  ; go there, return to caller
+  ijmp
 
 
 keyword_table:
