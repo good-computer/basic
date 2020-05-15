@@ -95,6 +95,13 @@ parse_line:
   ldi XL, low(input_buffer)
   ldi XH, high(input_buffer)
 
+  ; return if buffer is empty
+  ; XXX ignore spaces
+  ld r16, X
+  or r16, r16
+  brne PC+2
+  ret
+
   rcall parse_number
   brvc PC+2
   rjmp blink_forever
