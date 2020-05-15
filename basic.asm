@@ -8,6 +8,10 @@
 .equ program_buffer   = input_buffer_end + 1
 
 
+; error codes
+.equ error_no_such_keyword = 1
+
+
 .cseg
 .org 0x0000
 
@@ -216,7 +220,7 @@ keyword_end:
   or r17, r17
   brne PC+3
 
-  ldi r25, 0x1
+  ldi r25, error_no_such_keyword
   ret
 
   ; print the opcode
