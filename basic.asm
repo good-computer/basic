@@ -2,10 +2,16 @@
 .include "m8def.inc"
 
 ; XXX I wonder if there's a better way to set up a memory map
-.equ input_buffer     = SRAM_START
-.equ input_buffer_end = input_buffer + 0x7f
 
-.equ program_buffer   = input_buffer_end + 1
+; stack 0400-045f
+.equ stack_top        = RAMEND
+.equ stack_bottom     = stack_top - 0x5f
+
+; input buffer 0380-03ff
+.equ input_buffer     = stack_bottom - 0x80
+.equ input_buffer_end = stack_bottom - 1
+
+.equ program_buffer   = SRAM_START
 
 
 ; error codes
@@ -39,8 +45,8 @@
 reset:
 
   ; setup stack pointer
-  ldi r16, low(RAMEND)
-  ldi r17, high(RAMEND)
+  ldi r16, low(stack_top)
+  ldi r17, high(stack_top)
   out SPL, r16
   out SPH, r17
 
@@ -95,7 +101,7 @@ main_loop:
   ;ldi r16, 0x80
   ;rcall usart_tx_bytes_hex
 
-  rcall parse_line
+  rcall handle_line_input
 
   ; error check
   or r25, r25
@@ -143,7 +149,7 @@ error_lookup_table:
   .dw text_error_no_such_keyword*2
 
 
-parse_line:
+handle_line_input:
 
   ; start of buffer
   ldi XL, low(input_buffer)
@@ -161,7 +167,7 @@ parse_line:
   rjmp blink_forever
 
   ; no line number? do the immediate mode thing
-  brtc immediate_mode
+  brtc handle_line_input_immediate
 
   ; line number, set up to parse and store the statement
   ldi XL, low(input_buffer)
@@ -174,7 +180,7 @@ parse_line:
   ldi r16, 0x2
   rjmp usart_tx_bytes_hex
 
-immediate_mode:
+handle_line_input_immediate:
 
   ; reuse the input buffer for the op buffer
   ldi YL, low(input_buffer)
