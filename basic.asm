@@ -19,6 +19,10 @@
 .equ error_number_out_of_range = 2
 
 
+; global registers
+.def r_error = r25
+
+
 .cseg
 .org 0x0000
 
@@ -86,7 +90,7 @@ main:
 main_loop:
 
   ; clear last error
-  clr r25
+  clr r_error
 
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
@@ -105,7 +109,7 @@ main_loop:
   rcall handle_line_input
 
   ; error check
-  or r25, r25
+  or r_error, r_error
   breq main_loop
 
   rcall handle_error
@@ -118,30 +122,36 @@ main_loop:
 
 
 ; unrecoverable error
-; inputs:
-;   r25: error code
 handle_error:
+
+  ; all error text starts with '?', oldschool
   ldi r16, '?'
   rcall usart_tx_byte
 
-  dec r25
-  lsl r25
+  ; make zero-based, and multiple for program memory lookup
+  dec r_error
+  lsl r_error
 
+  ; point Z to error table entry
   ldi ZL, low(error_lookup_table*2)
   ldi ZH, high(error_lookup_table*2)
-  add ZL, r25
+  add ZL, r_error
   brcc PC+2
   inc ZL
 
-  clr r25
+  ; done with error code, clear it
+  clr r_error
 
+  ; load error text location from table
   lpm XL, Z+
   lpm XH, Z+
 
+  ; print it
   mov ZL, XL
   mov ZH, XH
   rcall usart_print
 
+  ; and the newline
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
   rjmp usart_print
@@ -168,7 +178,7 @@ handle_line_input:
   rcall parse_number
   brvc PC+3
 
-  ldi r25, error_number_out_of_range
+  ldi r_error, error_number_out_of_range
   ret
 
   ; no line number? do the immediate mode thing
@@ -193,7 +203,8 @@ handle_line_input_immediate:
 
   rcall parse_statement
 
-  or r25, r25
+  ; bail on parse error
+  or r_error, r_error
   breq PC+2
   ret
 
@@ -330,7 +341,7 @@ keyword_end:
   or r17, r17
   brne PC+3
 
-  ldi r25, error_no_such_keyword
+  ldi r_error, error_no_such_keyword
   ret
 
   ; store the opcode
