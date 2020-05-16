@@ -15,7 +15,8 @@
 
 
 ; error codes
-.equ error_no_such_keyword = 1
+.equ error_no_such_keyword     = 1
+.equ error_number_out_of_range = 2
 
 
 .cseg
@@ -147,6 +148,7 @@ handle_error:
 
 error_lookup_table:
   .dw text_error_no_such_keyword*2
+  .dw text_error_number_out_of_range*2
 
 
 handle_line_input:
@@ -162,9 +164,12 @@ handle_line_input:
   brne PC+2
   ret
 
+  ; parse the line number
   rcall parse_number
-  brvc PC+2
-  rjmp blink_forever
+  brvc PC+3
+
+  ldi r25, error_number_out_of_range
+  ret
 
   ; no line number? do the immediate mode thing
   brtc handle_line_input_immediate
@@ -899,3 +904,5 @@ text_prompt:
 
 text_error_no_such_keyword:
   .db "NO SUCH KEYWORD", 0
+text_error_number_out_of_range:
+  .db "NUMBER OUT OF RANGE", 0
