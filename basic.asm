@@ -904,8 +904,8 @@ uli_do_backspace:
   breq uli_next_char
 
   ; move buffer pointer back
-  dec XL
-  brpl PC+2
+  subi XL, 1
+  brcc PC+2
   dec XH
 
   ; echo destructive backspace
