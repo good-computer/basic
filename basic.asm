@@ -1,3 +1,5 @@
+; vim: ft=avr
+
 ;.device ATmega8
 .include "m8def.inc"
 
