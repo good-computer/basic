@@ -18,6 +18,8 @@
 
 ; global registers
 .def r_error = r25
+.def r_next_l = r23
+.def r_next_h = r24
 
 ; error codes
 .equ error_no_such_keyword     = 1
@@ -98,6 +100,12 @@ main:
 
 main_loop:
 
+  ; print first pointer and start of program buffer
+  ;ldi ZL, low(program_buffer)
+  ;ldi ZH, high(program_buffer)
+  ;ldi r16, 0x20
+  ;rcall usart_tx_bytes_hex
+
   ; clear last error
   clr r_error
 
@@ -111,12 +119,6 @@ main_loop:
   rcall usart_line_input
 
   rcall handle_line_input
-
-  ; print first pointer and start of program buffer
-  ldi ZL, low(program_buffer)
-  ldi ZH, high(program_buffer)
-  ldi r16, 0x20
-  rcall usart_tx_bytes_hex
 
   ; error check
   or r_error, r_error
@@ -556,22 +558,26 @@ BL50:
 execute_program:
 
   ; set next line pointer to start of program buffer
-  ldi r24, low(program_buffer)
-  ldi r25, high(program_buffer)
+  ldi r_next_l, low(program_buffer)
+  ldi r_next_h, high(program_buffer)
 
 execute_mainloop:
 
-  ; if next line pointer is null, program is over
-  or r24, r25
+  ; setup to read line
+  mov XL, r_next_l
+  mov XH, r_next_h
+
+  ; look for end-of-program marker (length 0)
+  ld r16, X+
+  or r16, r16
   breq execute_done
 
-  ; prepare current line pointer
-  mov XL, r24
-  mov XH, r25
-
-  ; hold location of next line in r24:r25
-  ld r24, X+
-  ld r25, X+
+  ; advance next instruction pointer
+  add r_next_l, r16 ; skip #r16 bytes of opbuffer
+  ldi r16, 3
+  adc r_next_l, r16 ; skip length+lineno
+  brcc PC+2
+  inc r_next_h
 
   ; skip the line number
   adiw XL, 2
@@ -584,8 +590,7 @@ execute_mainloop:
 
   ; program done!
 execute_done:
-  ;rjmp blink_forever
-  rjmp 0
+  ret
 
 ;
 ; the Tiny BASIC (1975) grammar.
@@ -737,7 +742,7 @@ op_list:
   ret
 
 op_run:
-  ret
+  rjmp execute_program
 
 op_end:
   rjmp blink_forever
