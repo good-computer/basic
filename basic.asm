@@ -100,6 +100,9 @@ main:
 
 main_loop:
 
+  rcall create_program
+  rcall execute_program
+
   ; print first pointer and start of program buffer
   ;ldi ZL, low(program_buffer)
   ;ldi ZH, high(program_buffer)
@@ -128,9 +131,6 @@ main_loop:
   rjmp main_loop
 
 
-  ;rcall create_program
-  ;rcall execute_program
-  ;rjmp 0
 
 
 ; unrecoverable error
@@ -531,28 +531,14 @@ create_program:
   ret
 
 static_program_buffer:
-BL10:
-  .dw (BL20-static_program_buffer)*2+program_buffer
-  .dw 10
-  .db 0x0c ; ON
-BL20:
-  .dw (BL30-static_program_buffer)*2+program_buffer
-  .dw 20
-  .db 0x0e ; SLEEP
-BL30:
-  .dw (BL40-static_program_buffer)*2+program_buffer
-  .dw 30
-  .db 0x0d ; OFF
-BL40:
-  .dw (BL50-static_program_buffer)*2+program_buffer
-  .dw 40
-  .db 0x0e ; SLEEP
-BL50:
-  .dw 0
-  .dw 50
-  .db 0x03, 0x0a, 0x00 ; GOTO 10
-
-  .db 0xff
+  .db \
+    1, 10, 0, 0x0c, \
+    1, 20, 0, 0x0e, \
+    1, 30, 0, 0x0d, \
+    1, 40, 0, 0x0e, \
+    3, 50, 0, 0x03, 10, 0, \
+    0, \
+    0xff
 
 
 execute_program:
@@ -676,49 +662,51 @@ op_if:
 
 op_goto:
   ; target line
-  ld r16, X+
-  ld r17, X+
+  ld r4, X+
+  ld r5, X+
 
   ; get pointer to start of program buffer
-  ldi r18, low(program_buffer)
-  ldi r19, high(program_buffer)
+  ldi r20, low(program_buffer)
+  ldi r21, high(program_buffer)
 
 op_goto_search_loop:
 
-  ; if next line pointer is null, search is over
-  or r18, r19
-  breq op_goto_search_failed
+  ; setup to read line
+  mov XL, r20
+  mov XH, r21
 
-  ; prepare current line pointer
-  mov XL, r18
-  mov XH, r19
+  ; look for end-of-program marker (length 0)
+  ld r16, X+
+  or r16, r16
+  breq op_goto_not_found
 
-  ; take location of next line to r18:r19
+  ; load line number
+  ld r17, X+
   ld r18, X+
-  ld r19, X+
 
-  ; move line number to r20:r21
-  ld r20, X+
-  ld r21, X+
+  cp r4, r17
+  brne PC+2
+  cp r5, r18
+  breq op_goto_found
 
-  ; compare current line number in r20:r21 with the wanted one in r16:r17
-  cp r20, r16
-  brne op_goto_search_loop
-  cp r21, r17
-  brne op_goto_search_loop
+  ; advance to next instruction
+  add r20, r16 ; skip #r16 bytes of opbuffer
+  ldi r16, 3
+  adc r20, r16 ; skip length+lineno
+  brcc op_goto_search_loop
+  inc r21
+  rjmp op_goto_search_loop
+
+op_goto_found:
 
   ; found it, set the next line pointer for execution to here
-  ldi r16, 4
-  clr r17
-  sub XL, r16
-  sbc XH, r17
-  mov r24, XL
-  mov r25, XH
+  mov r_next_l, r20
+  mov r_next_h, r20
 
   ; return from command; mainloop will continue at the line we set
   ret
 
-op_goto_search_failed:
+op_goto_not_found:
   ; XXX abort program
   rjmp blink_forever
 
