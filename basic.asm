@@ -13,16 +13,15 @@
 .equ input_buffer     = stack_bottom - 0x80
 .equ input_buffer_end = stack_bottom - 1
 
-.equ program_buffer   = SRAM_START
+; linked list of program instructions 0060->
+.equ program_buffer = SRAM_START
 
+; global registers
+.def r_error = r25
 
 ; error codes
 .equ error_no_such_keyword     = 1
 .equ error_number_out_of_range = 2
-
-
-; global registers
-.def r_error = r25
 
 
 .cseg
@@ -76,6 +75,14 @@ reset:
   out DDRB, r16
 
 
+  ; XXX this is CLEAR (NEW), I guess
+  ; make first instruction zero-length, truncating the entire program
+  ldi XL, low(program_buffer)
+  ldi XH, high(program_buffer)
+  clr r16
+  st X, r16
+
+
 main:
 
   ldi ZL, low(text_newline*2)
@@ -103,12 +110,13 @@ main_loop:
 
   rcall usart_line_input
 
-  ;ldi ZL, low(input_buffer)
-  ;ldi ZH, high(input_buffer)
-  ;ldi r16, 0x80
-  ;rcall usart_tx_bytes_hex
-
   rcall handle_line_input
+
+  ; print first pointer and start of program buffer
+  ldi ZL, low(program_buffer)
+  ldi ZH, high(program_buffer)
+  ldi r16, 0x20
+  rcall usart_tx_bytes_hex
 
   ; error check
   or r_error, r_error
@@ -183,23 +191,9 @@ handle_line_input:
   ldi r_error, error_number_out_of_range
   ret
 
-  ; no line number? do the immediate mode thing
-  brtc handle_line_input_immediate
+  ; XXX if at end of buffer, delete this line
 
-  ; line number, set up to parse and store the statement
-  ldi XL, low(input_buffer)
-  ldi XH, high(input_buffer)
-  st X+, r2
-  st X+, r3
-
-  ldi ZL, low(input_buffer)
-  ldi ZH, high(input_buffer)
-  ldi r16, 0x2
-  rjmp usart_tx_bytes_hex
-
-handle_line_input_immediate:
-
-  ; reuse the input buffer for the op buffer
+  ; parse the line back into the input buffer
   ldi YL, low(input_buffer)
   ldi YH, high(input_buffer)
 
@@ -216,12 +210,109 @@ handle_line_input_immediate:
   ;ldi r16, 0x10
   ;rcall usart_tx_bytes_hex
 
+  ; check if we have a line number
+  brts find_instruction_location
+
+  ; no line number, this is immediate mode and we can just execute it
   ldi XL, low(input_buffer)
   ldi XH, high(input_buffer)
 
   rcall execute_statement
 
   ret
+
+find_instruction_location:
+
+  ; Y currently pointing at end of bytecode. subtract start of buffer to find length
+  mov r24, YL
+  ldi r16, low(input_buffer)
+  sub r24, r16
+
+  ; setup pointer to first instruction
+  ldi YL, low(program_buffer)
+  ldi YH, high(program_buffer)
+
+  ; T flag indicates whether this is the last instruction in the program. if
+  ; so, we will set the empty end-of-program instruction after we store the new
+  ; instruction. setting it for the most common case of adding the line to the
+  ; end of the program
+  set
+
+consider_instruction:
+  ; load the length
+  ld r16, Y
+
+  ; check for the empty end-of-program instruction
+  ; if its here, we can go directly to store
+  or r16, r16
+  breq store_instruction
+
+  ; advance past the length field
+  adiw YL, 1
+
+  ; load the line number
+  ld r17, Y+
+  ld r18, Y+
+
+  ; compare the line number we're looking with the one we just parsed
+  cp r2, r17
+  cpc r3, r18
+
+  ; if its the same number, we're replacing it
+  breq replace_instruction
+
+  ; if its lower than us, then we belong here and need to push forward
+  brlo open_instruction
+
+  ; its higher than us, so we need to move along and try the next one
+
+  ; Y currently point at the oplist, which is #r16 long, so skip past it
+  add YL, r16
+  brcc consider_instruction
+  inc YH
+  rjmp consider_instruction
+
+replace_instruction:
+
+  ldi r16, 'R'
+  rcall usart_tx_byte
+  rjmp blink_forever
+
+open_instruction:
+  ldi r16, 'O'
+  rcall usart_tx_byte
+  rjmp blink_forever
+
+store_instruction:
+
+  ; Y at start of instruction, which has room
+
+  ; store length
+  st Y+, r24
+
+  ; store line number
+  st Y+, r2
+  st Y+, r3
+
+  ; copy #r24 bytes from op buffer
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+  ld r16, X+
+  st Y+, r16
+  dec r24
+  brne PC-3
+
+  brts store_end_of_program
+  ret
+
+store_end_of_program:
+  ; zero the length on the next instruction
+  clr r16
+  st Y+, r16
+
+  ret
+
+
 
 
 ; parse an ascii number
@@ -303,8 +394,8 @@ parse_number_overflow:
 parse_statement:
 
   ; take copy of pointer to start of statement, so we can reset it
-  mov r2, XL
-  mov r3, XH
+  mov r4, XL
+  mov r5, XH
 
   ; start of keyword table
   ldi ZL, low(keyword_table*2)
@@ -327,8 +418,8 @@ keyword_loop:
   ; chars didn't match, so we have to start over on the next keyword
 
   ; reset X to start of input keyword
-  mov XL, r2
-  mov XH, r3
+  mov XL, r4
+  mov XH, r5
 
   ; walk Z forward to the next keyword
   lpm r17, Z+
