@@ -100,9 +100,6 @@ main:
 
 main_loop:
 
-  rcall create_program
-  rcall execute_program
-
   ; print first pointer and start of program buffer
   ;ldi ZL, low(program_buffer)
   ;ldi ZH, high(program_buffer)
@@ -509,36 +506,6 @@ parse_let:
 
 parse_gosub:
   ret
-
-
-
-create_program:
-
-  ; fill the program buffer with a compiled program
-  ; XXX temporary until we have a working parser/loader
-
-  ldi ZL, low(static_program_buffer*2)
-  ldi ZH, high(static_program_buffer*2)
-
-  ldi XL, low(program_buffer)
-  ldi XH, high(program_buffer)
-
-  lpm r16, Z+
-  st X+, r16
-  cpi r16, 0xff
-  brne PC-3
-
-  ret
-
-static_program_buffer:
-  .db \
-    1, 10, 0, 0x0c, \
-    1, 20, 0, 0x0e, \
-    1, 30, 0, 0x0d, \
-    1, 40, 0, 0x0e, \
-    3, 50, 0, 0x03, 10, 0, \
-    0, \
-    0xff
 
 
 execute_program:
