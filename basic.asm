@@ -172,14 +172,23 @@ error_lookup_table:
   .dw text_error_expected_number*2
 
 
+skip_whitespace:
+  ld r16, X
+  cpi r16, 0x20
+  breq PC+2
+  ret
+  adiw XL, 1
+  rjmp skip_whitespace
+
 handle_line_input:
 
   ; start of buffer
   ldi XL, low(input_buffer)
   ldi XH, high(input_buffer)
 
+  rcall skip_whitespace
+
   ; return if buffer is empty
-  ; XXX ignore spaces
   ld r16, X
   or r16, r16
   brne PC+2
@@ -205,6 +214,8 @@ handle_line_input:
   or r_error, r_error
   breq PC+2
   ret
+
+  ; XXX skip remaining whitespace and look for end of buffer, error if not
 
   ; XXX dump the bytecode buffer
   ;ldi ZL, low(input_buffer)
@@ -395,6 +406,8 @@ parse_number_overflow:
 ;   X: pointer to statement text, will be moved
 parse_statement:
 
+  rcall skip_whitespace
+
   ; take copy of pointer to start of statement, so we can reset it
   mov r4, XL
   mov r5, XH
@@ -438,6 +451,8 @@ keyword_end:
 
   ldi r_error, error_no_such_keyword
   ret
+
+  rcall skip_whitespace
 
   ; store the opcode
   st Y+, r17
