@@ -25,6 +25,7 @@
 .equ error_no_such_keyword     = 1
 .equ error_number_out_of_range = 2
 .equ error_expected_number     = 3
+.equ error_no_such_line        = 4
 
 
 .cseg
@@ -170,6 +171,7 @@ error_lookup_table:
   .dw text_error_no_such_keyword*2
   .dw text_error_number_out_of_range*2
   .dw text_error_expected_number*2
+  .dw text_error_no_such_line*2
 
 
 skip_whitespace:
@@ -727,8 +729,10 @@ op_goto_found:
   ret
 
 op_goto_not_found:
-  ; XXX abort program
-  rjmp blink_forever
+
+  ; abort
+  ldi r_error, error_no_such_line
+  ret
 
 
 op_input:
@@ -1025,3 +1029,5 @@ text_error_number_out_of_range:
   .db "NUMBER OUT OF RANGE", 0
 text_error_expected_number:
   .db "EXPECTED NUMBER", 0
+text_error_no_such_line:
+  .db "NO SUCH LINE", 0
