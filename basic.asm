@@ -20,6 +20,8 @@
 .def r_error = r25
 .def r_next_l = r23
 .def r_next_h = r24
+.def r_top_l = r22
+.def r_top_h = r21
 
 ; error codes
 .equ error_no_such_keyword     = 1
@@ -80,11 +82,16 @@ reset:
 
 
   ; XXX this is CLEAR (NEW), I guess
+
   ; make first instruction zero-length, truncating the entire program
   ldi XL, low(program_buffer)
   ldi XH, high(program_buffer)
   clr r16
-  st X, r16
+  st X+, r16
+
+  ; set top pointer just past the zero-length instruction
+  mov r_top_l, XL
+  mov r_top_h, XH
 
 
 main:
@@ -324,6 +331,10 @@ store_end_of_program:
   ; zero the length on the next instruction
   clr r16
   st Y+, r16
+
+  ; moved top of memory
+  mov r_top_l, YL
+  mov r_top_h, YH
 
   ret
 
