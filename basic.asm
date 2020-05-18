@@ -688,14 +688,14 @@ op_goto:
   ld r5, X+
 
   ; get pointer to start of program buffer
-  ldi r20, low(program_buffer)
-  ldi r21, high(program_buffer)
+  ldi r19, low(program_buffer)
+  ldi r20, high(program_buffer)
 
 op_goto_search_loop:
 
   ; setup to read line
-  mov XL, r20
-  mov XH, r21
+  mov XL, r19
+  mov XH, r20
 
   ; look for end-of-program marker (length 0)
   ld r16, X+
@@ -712,18 +712,18 @@ op_goto_search_loop:
   breq op_goto_found
 
   ; advance to next instruction
-  add r20, r16 ; skip #r16 bytes of opbuffer
+  add r19, r16 ; skip #r16 bytes of opbuffer
   ldi r16, 3
-  adc r20, r16 ; skip length+lineno
+  adc r19, r16 ; skip length+lineno
   brcc op_goto_search_loop
-  inc r21
+  inc r20
   rjmp op_goto_search_loop
 
 op_goto_found:
 
   ; found it, set the next line pointer for execution to here
-  mov r_next_l, r20
-  mov r_next_h, r20
+  mov r_next_l, r19
+  mov r_next_h, r19
 
   ; return from command; mainloop will continue at the line we set
   ret
