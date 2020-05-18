@@ -24,6 +24,7 @@
 ; error codes
 .equ error_no_such_keyword     = 1
 .equ error_number_out_of_range = 2
+.equ error_expected_number     = 3
 
 
 .cseg
@@ -168,6 +169,7 @@ handle_error:
 error_lookup_table:
   .dw text_error_no_such_keyword*2
   .dw text_error_number_out_of_range*2
+  .dw text_error_expected_number*2
 
 
 handle_line_input:
@@ -185,8 +187,9 @@ handle_line_input:
 
   ; parse the line number
   rcall parse_number
-  brvc PC+3
 
+  ; overflow?
+  brvc PC+3
   ldi r_error, error_number_out_of_range
   ret
 
@@ -496,6 +499,33 @@ parse_if:
   ret
 
 parse_goto:
+  push r2
+  push r3
+
+  ; XXX expression
+  rcall parse_number
+
+  ; overflow?
+  brvc PC+3
+  ldi r_error, error_number_out_of_range
+  rjmp parse_goto_done
+
+  ; was there even a number?
+  brts PC+3
+  ldi r_error, error_expected_number
+  rjmp parse_goto_done
+
+  ; store it
+  st Y+, r2
+  st Y+, r3
+
+parse_goto_done:
+  pop r3
+  pop r2
+
+  ret
+
+
   ret
 
 parse_input:
@@ -970,3 +1000,5 @@ text_error_no_such_keyword:
   .db "NO SUCH KEYWORD", 0
 text_error_number_out_of_range:
   .db "NUMBER OUT OF RANGE", 0
+text_error_expected_number:
+  .db "EXPECTED NUMBER", 0
