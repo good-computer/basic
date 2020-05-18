@@ -555,6 +555,9 @@ parse_gosub:
 
 execute_program:
 
+  ; clear last error
+  clr r_error
+
   ; set next line pointer to start of program buffer
   ldi r_next_l, low(program_buffer)
   ldi r_next_h, high(program_buffer)
@@ -583,8 +586,13 @@ execute_mainloop:
   ; statement now at X, execute it
   rcall execute_statement
 
-  ; next line!
-  rjmp execute_mainloop
+  ; error check
+  or r_error, r_error
+  breq execute_mainloop
+
+  ; error
+  rcall handle_error
+  ; XXX IN LINE 30
 
   ; program done!
 execute_done:
