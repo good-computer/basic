@@ -723,7 +723,7 @@ op_goto_found:
 
   ; found it, set the next line pointer for execution to here
   mov r_next_l, r19
-  mov r_next_h, r19
+  mov r_next_h, r20
 
   ; return from command; mainloop will continue at the line we set
   ret
