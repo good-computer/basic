@@ -948,39 +948,26 @@ uli_do_backspace:
 ; inputs:
 ;   r16: byte to send
 usart_tx_byte_hex:
-  push ZL
-  push ZH
-
   push r16
-  clr r17
-
-  ldi ZL, low(hex_digits*2)
-  ldi ZH, high(hex_digits*2)
-
-  swap r16
+  swap r16,
   andi r16, 0x0f
-  add ZL, r16
-  adc ZH, r17
-  lpm r16, Z
+  ldi r17, 0x30
+  add r16, r17
+  cpi r16, 0x3a
+  brlo PC+3
+  ldi r17, 0x27
+  add r16, r17
   rcall usart_tx_byte
-
-  ldi ZL, low(hex_digits*2)
-  ldi ZH, high(hex_digits*2)
 
   pop r16
   andi r16, 0x0f
-  add ZL, r16
-  adc ZH, r17
-  lpm r16, Z
-  rcall usart_tx_byte
-
-  pop ZH
-  pop ZL
-
-  ret
-
-hex_digits:
-  .db "0123456789abcdef"
+  ldi r17, 0x30
+  add r16, r17
+  cpi r16, 0x3a
+  brlo PC+3
+  ldi r17, 0x27
+  add r16, r17
+  rjmp usart_tx_byte
 
 
 ; transmit a hex representation of a block of data via the usart
