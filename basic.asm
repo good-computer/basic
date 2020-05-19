@@ -83,6 +83,20 @@ reset:
   out DDRB, r16
 
 
+  ; XXX DEBUG clear the program buffer
+  ldi XL, low(program_buffer)
+  ldi XH, high(program_buffer)
+  ldi r16, low(program_buffer_end)
+  ldi r17, high(program_buffer_end)
+  ldi r18, 0x55
+  ldi r19, 0xaa
+  st X+, r18
+  st X+, r19
+  cp XL, r16
+  cpc XH, r17
+  brlo PC-4
+
+
   ; XXX this is CLEAR (NEW), I guess
 
   ; make first instruction zero-length, truncating the entire program
@@ -111,12 +125,40 @@ main:
 
 main_loop:
 
-  ; print first pointer and start of program buffer
+; XXX START DEBUG
+
+  ; start of program buffer
   ldi ZL, low(program_buffer)
   ldi ZH, high(program_buffer)
   ldi r16, 0x20
   ldi r17, 0x00
   rcall usart_tx_bytes_hex
+
+  ldi r16, 0xa
+  rcall usart_tx_byte
+  ldi r16, 0xd
+  rcall usart_tx_byte
+
+  ; top of program buffer
+  ldi ZL, low(program_buffer_end-0x1f)
+  ldi ZH, high(program_buffer_end-0x1f)
+  ldi r16, 0x20
+  ldi r17, 0x00
+  rcall usart_tx_bytes_hex
+
+  ldi r16, 0xa
+  rcall usart_tx_byte
+  ldi r16, 0xd
+  rcall usart_tx_byte
+
+  ; start of input buffer (immediately after program buffer)
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+  ldi r16, 0x20
+  ldi r17, 0x00
+  rcall usart_tx_bytes_hex
+
+; XXX END DEBUG
 
   ; clear last error
   clr r_error
