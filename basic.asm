@@ -18,11 +18,11 @@
 .equ program_buffer_end = input_buffer - 1
 
 ; global registers
-.def r_error = r25
-.def r_next_l = r23
+.def r_error  = r25 ; last error code
+.def r_next_l = r23 ; memory location of next instruction
 .def r_next_h = r24
-.def r_top_l = r22
-.def r_top_h = r21
+.def r_top_l  = r21 ; pointer to top of program (one past end-of-program marker)
+.def r_top_h  = r22
 
 ; error codes
 .equ error_no_such_keyword     = 1
@@ -112,6 +112,7 @@ reset:
 
 main:
 
+  ; say hello
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
   rcall usart_print
@@ -163,6 +164,7 @@ main_loop:
   ; clear last error
   clr r_error
 
+  ; show the prompt
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
   rcall usart_print
@@ -170,18 +172,19 @@ main_loop:
   ldi ZH, high(text_prompt*2)
   rcall usart_print
 
+  ; read a line
   rcall usart_line_input
 
+  ; and do stuff on it
   rcall handle_line_input
 
   ; error check
   or r_error, r_error
   breq main_loop
 
+  ; show error text
   rcall handle_error
   rjmp main_loop
-
-
 
 
 ; unrecoverable error
@@ -227,6 +230,7 @@ error_lookup_table:
   .dw text_error_out_of_memory*2
 
 
+; move X forward until there's no whitespace under it
 skip_whitespace:
   ld r16, X
   cpi r16, 0x20
@@ -235,6 +239,8 @@ skip_whitespace:
   adiw XL, 1
   rjmp skip_whitespace
 
+
+; consider the line buffer and do the right thing
 handle_line_input:
 
   ; start of buffer
@@ -259,7 +265,7 @@ handle_line_input:
 
   ; XXX if at end of buffer, delete this line
 
-  ; parse the line back into the input buffer
+  ; parse the line back into the input buffer (as op buffer)
   ldi YL, low(input_buffer)
   ldi YH, high(input_buffer)
 
@@ -272,7 +278,7 @@ handle_line_input:
 
   ; XXX skip remaining whitespace and look for end of buffer, error if not
 
-  ; XXX dump the bytecode buffer
+  ; XXX dump the op buffer
   ;ldi ZL, low(input_buffer)
   ;ldi ZH, high(input_buffer)
   ;ldi r16, 0x10
@@ -291,8 +297,10 @@ handle_line_input:
   ret
 
 find_instruction_location:
+  ; we have a line number, so we need to add it to the program
 
-  ; Y currently pointing at end of bytecode. subtract start of buffer to find length
+  ; Y currently pointing at end of op we just parsed. subtract start of buffer
+  ; to find length
   mov r24, YL
   ldi r16, low(input_buffer)
   sub r24, r16
@@ -455,8 +463,6 @@ store_end_of_program:
   ret
 
 
-
-
 ; parse an ascii number
 ; inputs:
 ;   X: pointer to ascii digit sequence, will be moved
@@ -522,7 +528,7 @@ parse_number_loop:
   inc r3
   brne parse_number_loop
 
-  ; overflowed, restore X flag and abort
+  ; overflowed, restore, X flag and abort
 parse_number_overflow:
   mov XL, r7
   mov XH, r8
@@ -672,8 +678,6 @@ parse_goto_done:
   ret
 
 
-  ret
-
 parse_input:
   ret
 
@@ -729,43 +733,6 @@ execute_mainloop:
 execute_done:
   ret
 
-;
-; the Tiny BASIC (1975) grammar.
-;
-;    line ::= number statement CR | statement CR
-;
-;    statement ::= PRINT expr-list
-;                  IF expression relop expression THEN statement
-;                  GOTO expression
-;                  INPUT var-list
-;                  LET var = expression
-;                  GOSUB expression
-;                  RETURN
-;                  CLEAR
-;                  LIST
-;                  RUN
-;                  END
-;
-;    expr-list ::= (string|expression) (, (string|expression) )*
-;
-;    var-list ::= var (, var)*
-;
-;    expression ::= (+|-|ε) term ((+|-) term)*
-;
-;    term ::= factor ((*|/) factor)*
-;
-;    factor ::= var | number | (expression)
-;
-;    var ::= A | B | C ... | Y | Z
-;
-;    number ::= digit digit*
-;
-;    digit ::= 0 | 1 | 2 | 3 | ... | 8 | 9
-;
-;    relop ::= < (>|=|ε) | > (<|=|ε) | =
-;
-;    string ::= " (a|b|c ... |x|y|z|A|B|C ... |X|Y|Z|digit)* "
-;
 
 ; run the statement at X
 execute_statement:
@@ -881,6 +848,8 @@ op_clear:
   ret
 
 op_list:
+
+  ; XXX this is very stupid, just hexdumps each line
 
   ; get pointer to start of program buffer
   ldi XL, low(program_buffer)
@@ -1066,10 +1035,9 @@ uli_do_enter:
   ldi r16, 0xa
   rcall usart_tx_byte
   ldi r16, 0xd
-  rcall usart_tx_byte
+  rjmp usart_tx_byte
 
   ; that's all the input!
-  ret
 
 uli_do_backspace:
   ; start-of-buffer check
@@ -1098,6 +1066,7 @@ uli_do_backspace:
 ; inputs:
 ;   r16: byte to send
 usart_tx_byte_hex:
+  ; high nybble
   push r16
   swap r16,
   andi r16, 0x0f
@@ -1109,6 +1078,7 @@ usart_tx_byte_hex:
   add r16, r17
   rcall usart_tx_byte
 
+  ; low nybble
   pop r16
   andi r16, 0x0f
   ldi r17, 0x30
