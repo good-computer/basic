@@ -376,6 +376,10 @@ open_instruction:
   mov ZL, r_top_l
   mov ZH, r_top_h
 
+  ; new top is in X
+  mov r_top_l, XL
+  mov r_top_h, XH
+
   ; Y currently pointing at the oplist of the instruction we're inserting
   ; before. roll it back a bit
   subi YL, 3
