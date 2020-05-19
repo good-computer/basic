@@ -615,6 +615,7 @@ keyword_table:
       "ON",     0xc, \
       "OFF",    0xd, \
       "SLEEP",  0xe, \
+      "RESET",  0xf, \
                      \
       0
 
@@ -634,6 +635,7 @@ keyword_parse_table:
   ret               ; 0x0c [ON]
   ret               ; 0x0d [OFF]
   ret               ; 0x0e [SLEEP]
+  ret               ; 0x0f [RESET]
 
 
 parse_print:
@@ -802,6 +804,7 @@ op_table:
   rjmp op_on      ; 0x0c [ON]
   rjmp op_off     ; 0x0d [OFF]
   rjmp op_sleep   ; 0x0e [SLEEP]
+  rjmp op_reset   ; 0x0f [RESET]
 
 op_print:
   ret
@@ -932,6 +935,14 @@ op_sleep:
   dec  r18
   brne PC-5
   ret
+
+op_reset:
+
+  ; enable watchdog timer to force reset in ~16ms
+  cli
+  ldi r16, (1<<WDE)
+  out WDTCR, r16
+  rjmp PC
 
 
 blink_forever:
