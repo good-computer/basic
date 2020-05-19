@@ -851,7 +851,32 @@ op_clear:
   ret
 
 op_list:
+
+  ; get pointer to start of program buffer
+  ldi XL, low(program_buffer)
+  ldi XH, high(program_buffer)
+
+op_list_next:
+  ld r16, X
+  or r16, r16
+  brne PC+2
   ret
+
+  ldi r17, 3
+  add r16, r17
+
+  mov ZL, XL
+  mov ZH, XH
+  clr r17
+
+  add XL, r16
+  brcc PC+2
+  inc XH
+
+  rcall usart_tx_bytes_hex
+
+  rjmp op_list_next
+
 
 op_run:
   rjmp execute_program
