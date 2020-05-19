@@ -110,10 +110,11 @@ main:
 main_loop:
 
   ; print first pointer and start of program buffer
-  ;ldi ZL, low(program_buffer)
-  ;ldi ZH, high(program_buffer)
-  ;ldi r16, 0x20
-  ;rcall usart_tx_bytes_hex
+  ldi ZL, low(program_buffer)
+  ldi ZH, high(program_buffer)
+  ldi r16, 0x20
+  ldi r17, 0x00
+  rcall usart_tx_bytes_hex
 
   ; clear last error
   clr r_error
@@ -230,6 +231,7 @@ handle_line_input:
   ;ldi ZL, low(input_buffer)
   ;ldi ZH, high(input_buffer)
   ;ldi r16, 0x10
+  ;ldi r17, 0x00
   ;rcall usart_tx_bytes_hex
 
   ; check if we have a line number
@@ -986,9 +988,15 @@ hex_digits:
 ;   Y: pointer to start of data in sram
 ;   r16: number of bytes to transmit
 usart_tx_bytes_hex:
-  mov r19, r16
-  ldi r20, 8
+  mov r18, r16
+  mov r19, r17
+  ldi r20, 0x10
 
+usart_tx_bytes_hex_start_line:
+  mov r16, ZH
+  rcall usart_tx_byte_hex
+  mov r16, ZL
+  rcall usart_tx_byte_hex
   ldi r16, ' '
   rcall usart_tx_byte
   rcall usart_tx_byte
@@ -997,25 +1005,27 @@ usart_tx_bytes_hex_next:
   ld r16, Z+
   rcall usart_tx_byte_hex
 
-  dec r19
+  dec r18
+  brne PC+4
+  cpi r19, 0
   breq usart_tx_bytes_hex_done
+  dec r19
+
+  dec r20
+  breq PC+4
 
   ldi r16, ' '
-  dec r20
-  brne usart_tx_bytes_hex_print_gap
+  rcall usart_tx_byte
+  rjmp usart_tx_bytes_hex_next
 
-  ldi r20, 8
+  ldi r20, 0x10
 
   ldi r16, 0xa
   rcall usart_tx_byte
   ldi r16, 0xd
   rcall usart_tx_byte
-  ldi r16, ' '
-  rcall usart_tx_byte
 
-usart_tx_bytes_hex_print_gap:
-  rcall usart_tx_byte
-  rjmp usart_tx_bytes_hex_next
+  rjmp usart_tx_bytes_hex_start_line
 
 usart_tx_bytes_hex_done:
   ldi r16, 0xa
