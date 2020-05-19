@@ -14,7 +14,8 @@
 .equ input_buffer_end = stack_bottom - 1
 
 ; linked list of program instructions 0060->
-.equ program_buffer = SRAM_START
+.equ program_buffer     = SRAM_START
+.equ program_buffer_end = input_buffer - 1
 
 ; global registers
 .def r_error = r25
@@ -28,6 +29,7 @@
 .equ error_number_out_of_range = 2
 .equ error_expected_number     = 3
 .equ error_no_such_line        = 4
+.equ error_out_of_memory       = 5
 
 
 .cseg
@@ -180,6 +182,7 @@ error_lookup_table:
   .dw text_error_number_out_of_range*2
   .dw text_error_expected_number*2
   .dw text_error_no_such_line*2
+  .dw text_error_out_of_memory*2
 
 
 skip_whitespace:
@@ -303,9 +306,51 @@ replace_instruction:
   rjmp blink_forever
 
 open_instruction:
-  ldi r16, 'O'
-  rcall usart_tx_byte
-  rjmp blink_forever
+
+  ; make a gap of #r24 + 3 bytes here
+
+  ; get pointer to top of memory
+  mov XL, r_top_l
+  mov XH, r_top_h
+
+  ; add room for the instruction, making X our move target
+  adiw XL, 3
+  add XL, r24
+  brcc PC+2
+  inc XH
+
+  ; see if we've gone past the end
+  ldi r19, low(program_buffer_end)
+  ldi r20, high(program_buffer_end)
+  cp r19, XL
+  cpc r20, XH
+  brsh PC+3
+
+  ; aww
+  ldi r_error, error_out_of_memory
+  ret
+
+  ; move source is just the existing top
+  mov ZL, r_top_l
+  mov ZH, r_top_h
+
+  ; Y currently pointing at the oplist of the instruction we're inserting
+  ; before. roll it back a bit
+  subi YL, 3
+  brcc PC+2
+  dec YH
+
+  ; now copy from Z -> X, rolling down until Z = Y
+  ld r4, -Z
+  st -X, r4
+  cp ZL, YL
+  cpc ZH, YH
+  brne PC-4
+
+  ; no end-of-program instruction
+  clt
+
+  ; fall through to store_instruction
 
 store_instruction:
 
@@ -1039,3 +1084,5 @@ text_error_expected_number:
   .db "EXPECTED NUMBER", 0
 text_error_no_such_line:
   .db "NO SUCH LINE", 0
+text_error_out_of_memory:
+  .db "OUT OF MEMORY", 0
