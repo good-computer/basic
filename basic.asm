@@ -312,9 +312,9 @@ consider_instruction:
   ld r16, Y
 
   ; check for the empty end-of-program instruction
-  ; if its here, we can go directly to store
+  ; if its here, we can go directly to append
   or r16, r16
-  breq store_instruction
+  breq append_instruction
 
   ; advance past the length field
   adiw YL, 1
@@ -340,6 +340,29 @@ consider_instruction:
   brcc consider_instruction
   inc YH
   rjmp consider_instruction
+
+append_instruction:
+
+  ; need to check if there's room. compute position of new top pointer
+  mov XL, YL
+  mov XH, YH
+  adiw XL, 4 ; length + 2xlineno + end-of-program
+  add XL, r16
+  brcc PC+2
+  inc XH
+
+  ; see if we've gone past the end
+  ldi r19, low(program_buffer_end)
+  ldi r20, high(program_buffer_end)
+  cp r19, XL
+  cpc r20, XH
+  brsh PC+3
+
+  ; aww
+  ldi r_error, error_out_of_memory
+  ret
+
+  rjmp store_instruction
 
 replace_instruction:
 
