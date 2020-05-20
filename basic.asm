@@ -804,7 +804,9 @@ expr_dump_remaining_opers:
   cpi ZL, low(expr_stack)
   brsh PC+2
 
-  ; done!
+  ; done! add terminator and get out of here
+  clr r16
+  st Y+, r16
   ret
 
   ; pop
