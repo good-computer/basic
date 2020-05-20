@@ -813,7 +813,7 @@ expr_dump_remaining_opers:
 
   ; check if stack is empty
   cpi ZL, low(expr_stack)
-  brsh PC+2
+  brsh PC+4
 
   ; done! add terminator and get out of here
   clr r16
