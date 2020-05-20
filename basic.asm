@@ -1171,6 +1171,58 @@ blink_forever:
   rjmp blink_forever
 
 
+; take a number, convert to ASCII
+; inputs:
+;   r16:r17: number
+; outputs
+;   X: ascii
+format_number:
+  ldi ZL, low(decades*2)
+  ldi ZH, high(decades*2)
+
+  ; accumulator, to handle zero padding
+  clr r19
+
+format_number_loop:
+  ldi r18, 0x2f ; just before ASCII '0'
+
+  ; get decade (10 multiplier)
+  lpm r2, Z+
+  lpm r3, Z+
+
+  ; repeatedly subtract until we go negative
+  inc r18
+  sub r16, r2
+  sbc r17, r3
+  brsh PC-3
+
+  ; add back the remainder
+  add r16, r2
+  adc r17, r3
+
+  ; accumulate bottom bits of result; while its zero, we're in leading zeros
+  ; and shouldn't emit anything
+  add r19, r18
+  andi r19, 0xf
+  breq PC+2
+
+  ; emit a digit!
+  st X+, r18
+
+  ; move to next decade
+  cpi ZL, low(decades*2)+5*2
+  brne format_number_loop
+
+  ; trailing zero
+  clr r16
+  st X+, r16
+
+  ret
+
+decades:
+  .dw 10000, 1000, 100, 10, 1
+
+
 ; receive a byte from the usart
 ; outputs:
 ;   r16: received byte
