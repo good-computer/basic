@@ -35,6 +35,7 @@
 .equ error_no_such_line        = 4
 .equ error_out_of_memory       = 5
 .equ error_mismatched_parens   = 6
+.equ error_overflow            = 7
 
 
 .cseg
@@ -262,6 +263,7 @@ error_lookup_table:
   .dw text_error_no_such_line*2
   .dw text_error_out_of_memory*2
   .dw text_error_mismatched_parens*2
+  .dw text_error_overflow*2
 
 
 ; move X forward until there's no whitespace under it
@@ -1048,6 +1050,28 @@ op_table:
   rjmp op_reset   ; 0x0f [RESET]
 
 op_print:
+  rcall eval_expression
+
+  or r_error, r_error
+  breq PC+2
+  ret
+
+  push XL
+  push XH
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+  st X+, r16
+  st X+, r17
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+  rcall format_number
+  pop XH
+  pop XL
+
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+  rcall usart_print
+
   ret
 
 op_if:
@@ -1186,6 +1210,196 @@ op_reset:
   ldi r16, (1<<WDE)
   out WDTCR, r16
   rjmp PC
+
+
+; evaluate expression
+; inputs:
+;   X: expression op
+; outputs:
+;   r16:r17: result
+eval_expression:
+
+  ; use the input buffer as the eval stack
+  ldi YL, low(input_buffer)
+  ldi YH, high(input_buffer)
+
+eval_next:
+  ; get expr micro-op
+  ld r16, X+
+
+  ; terminator
+  cpi r16, 0x0
+  brne eval_check_literal
+
+  ; pop result!
+  ld r17, -Y
+  ld r16, -Y
+
+  ret
+
+eval_check_literal:
+
+  ; numeric literal
+  cpi r16, 0x1
+  brne eval_check_add
+
+  ; push number onto stack
+  ld r16, X+
+  ld r17, X+
+  st Y+, r16
+  st Y+, r17
+
+  rjmp eval_next
+
+eval_check_add:
+
+  ; add
+  cpi r16, '+'
+  brne eval_check_sub
+
+  ; pop B
+  ld r19, -Y
+  ld r18, -Y
+
+  ; pop A
+  ld r17, -Y
+  ld r16, -Y
+
+  ; A + B
+  add r16, r18
+  adc r17, r19
+  brcc PC+3
+
+  ldi r_error, error_overflow
+  ret
+
+  ; push result
+  st Y+, r16
+  st Y+, r17
+
+  rjmp eval_next
+
+eval_check_sub:
+
+  ; sub
+  cpi r16, '-'
+  brne eval_check_mul
+
+  ; pop B
+  ld r19, -Y
+  ld r18, -Y
+
+  ; pop A
+  ld r17, -Y
+  ld r16, -Y
+
+  ; A - B
+  sub r16, r18
+  sbc r17, r19
+  brcc PC+3
+
+  ldi r_error, error_overflow
+  ret
+
+  ; push result
+  st Y+, r16
+  st Y+, r17
+
+  rjmp eval_next
+
+eval_check_mul:
+
+  ; mul
+  cpi r16, '*'
+  brne eval_check_div
+
+  ; pop B
+  ld r19, -Y
+  ld r18, -Y
+
+  ; pop A
+  ld r17, -Y
+  ld r16, -Y
+
+  ; A * B
+
+  ; this is a full 16x16->32 bit multiply, even though we're limited to 16-bit
+  ; math for the moment. this is actually slightly easier (for me) to write and
+  ; we're going to need it in the future anyway.
+  clr r20
+  mul r17, r19
+  mov r4, r0
+  mov r5, r1
+  mul r16, r18
+  mov r2, r0
+  mov r3, r1
+  mul r17, r18
+  add r3, r0
+  adc r4, r1
+  adc r5, r20
+  mul r16, r19
+  add r3, r0
+  adc r4, r1
+  adc r5, r20
+
+  ; check overflow
+  or r4, r5
+  breq PC+3
+
+  ldi r_error, error_overflow
+  ret
+
+  ; push result
+  st Y+, r2
+  st Y+, r3
+
+  rjmp eval_next
+
+eval_check_div:
+
+  ; div
+  cpi r16, '/'
+  breq PC+2
+
+  ; XXX can't happen? found something on the stack we weren't expecting
+  rjmp blink_forever
+
+  ; pop B
+  ld r19, -Y
+  ld r18, -Y
+
+  ; pop A
+  ld r17, -Y
+  ld r16, -Y
+
+  ; taken from AVR200 app note
+  clr r4        ; clear remainder Low byte
+  sub r5, r5    ; clear remainder High byte and carry
+  ldi r20, 17   ; init loop counter
+div_loop:
+  rol r16       ; shift left dividend
+  rol r17
+  dec r20       ; decrement counter
+  breq div_done ; if done
+  rol r4        ; shift dividend into remainder
+  rol r5
+  sub r4, r18   ; remainder = remainder - divisor
+  sbc r5, r19
+  brcc PC+5     ; if result negative
+  add r4, r18   ;     restore remainder
+  adc r5, r19
+  clc           ; clear carry to be shifted into result
+  rjmp div_loop ; else
+  sec           ; set carry to be shifted into result
+  rjmp div_loop
+
+div_done:
+
+  ; push result
+  st Y+, r16
+  st Y+, r17
+
+  rjmp eval_next
 
 
 blink_forever:
@@ -1501,3 +1715,5 @@ text_error_out_of_memory:
   .db "OUT OF MEMORY", 0
 text_error_mismatched_parens:
   .db "MISMATCHED PARENS", 0
+text_error_overflow:
+  .db "OVERFLOW", 0
