@@ -13,9 +13,13 @@
 .equ input_buffer     = stack_bottom - 0x80
 .equ input_buffer_end = stack_bottom - 1
 
+; expression stack 0360-037f
+.equ expr_stack     = input_buffer - 0x20
+.equ expr_stack_end = input_buffer - 1
+
 ; linked list of program instructions 0060->
 .equ program_buffer     = SRAM_START
-.equ program_buffer_end = input_buffer - 1
+.equ program_buffer_end = expr_stack - 1
 
 ; global registers
 .def r_error  = r25 ; last error code
@@ -30,6 +34,7 @@
 .equ error_expected_number     = 3
 .equ error_no_such_line        = 4
 .equ error_out_of_memory       = 5
+.equ error_mismatched_parens   = 6
 
 
 .cseg
@@ -228,6 +233,7 @@ error_lookup_table:
   .dw text_error_expected_number*2
   .dw text_error_no_such_line*2
   .dw text_error_out_of_memory*2
+  .dw text_error_mismatched_parens*2
 
 
 ; move X forward until there's no whitespace under it
@@ -645,7 +651,23 @@ keyword_parse_table:
 
 
 parse_print:
+  push r2
+  push r3
+
+  rcall parse_expression
+
+  ; bail on parse error
+  or r_error, r_error
+  brne parse_print_done
+
+  ; XXX expr-list
+
+parse_print_done:
+  pop r3
+  pop r2
+
   ret
+
 
 parse_if:
   ret
@@ -686,6 +708,210 @@ parse_let:
 
 parse_gosub:
   ret
+
+
+parse_expression:
+
+  ; prep expression stack pointer at one behind the stack area
+  ; (so pointer always points to top item on stack)
+  ldi ZL, low(expr_stack-1)
+  ldi ZH, high(expr_stack-1)
+
+expr_next:
+  rcall skip_whitespace
+
+  ; next char
+  ld r16, X
+
+  ; operands (numbers, variables) go to the output buffer, with suitable
+  ; micro-ops so we know how to resolve them at runtime
+
+  cpi r16, 0x30
+  brlo expr_maybe_var
+  cpi r16, 0x3a
+  brsh expr_maybe_var
+
+  ; a number, try to parse it
+  rcall parse_number
+
+  ; overflow?
+  brvc PC+3
+  ldi r_error, error_number_out_of_range
+  ret
+
+  ; literal number marker
+  ldi r16, 0x1
+  st Y+, r16
+
+  ; the number
+  st Y+, r2
+  st Y+, r3
+
+  rjmp expr_next
+
+expr_maybe_var:
+
+  ; XXX check for var, send to output buffer
+
+expr_maybe_oper:
+
+  ; inital check that its an operator; this is doubling up a little but makes
+  ; future checks easier
+  ; operators are ( ) * + - / (28-2b,2d,2f)
+  cpi r16, 0x28
+  brlo expr_dump_remaining_opers
+  cpi r16, 0x2c
+  brlo expr_start_oper_stack
+  cpi r16, 0x2d
+  breq expr_start_oper_stack
+  cpi r16, 0x2f
+  breq expr_start_oper_stack
+
+  ; nothing interesting, so end of expression
+  ; pop remaining operators and send to output
+
+expr_dump_remaining_opers:
+
+  ; check if stack is empty
+  cpi ZL, low(expr_stack)
+  brsh PC+2
+
+  ; done!
+  ret
+
+  ; pop
+  ld r17, Z
+  dec ZL
+
+  ; check for parens, shouldn't be here
+  cpi r17, '('
+  brne PC+3
+
+  ; ohnoes
+  ldi r_error, error_mismatched_parens
+  ret
+
+  ; send to output
+  st Y+, r17
+
+  rjmp expr_dump_remaining_opers
+
+expr_start_oper_stack:
+  ; take the operator
+  adiw XL, 1
+
+  ; right paren first, since it must never go on stack
+  cpi r16, ')'
+  brne expr_try_oper
+
+  ; closing paren, so pop all the operators to the opening paren and add them to the op buffer
+expr_take_opers:
+
+  ; top of stack check
+  cpi ZL, low(expr_stack)
+  brsh PC+3
+
+  ; ran out of stack before we found the opening paren
+  ldi r_error, error_mismatched_parens
+  ret
+
+  ; take the top item
+  ld r16, Z
+  dec ZL
+
+  ; left paren terminates
+  cpi r16, '('
+  breq PC+3
+
+  ; anything else, push to output, go for next
+  st Y+, r16
+  rjmp expr_take_opers
+
+  rjmp expr_next
+
+expr_try_oper:
+  ; check if stack empty
+  cpi ZL, low(expr_stack)
+  brlo expr_push_oper
+
+  ; see what's on the stack
+  ld r17, Z
+  cpi r17, '('
+  brne expr_left_paren
+
+expr_push_oper:
+  ; stack empty or left paren on stack, so push the oper
+  inc ZL
+  st Z, r16
+  rjmp expr_next
+
+expr_left_paren:
+
+  ; left paren goes straight to the stack
+  cpi r16, '('
+  brne expr_oper_precedence
+
+  inc ZL
+  st Z, r16
+  rjmp expr_next
+
+expr_oper_precedence:
+
+  ; - if higher precendence, push onto stack
+  ; - if equal precedence, pop and output, then push
+  ; - if lower precedence, pop and output, then retest
+
+  ; inspect top of stack
+  ld r17, Z
+
+  ; everything is higher precedence than left paren
+  cpi r17, '('
+  breq expr_oper_higher_precedence
+
+  ; only * and / can have higher precedence
+  cpi r16, '*'
+  breq PC+3
+  cpi r16, '/'
+  brne expr_oper_check_plusminus_precedence
+
+  ; check equal precedence
+  cpi r17, '*'
+  breq expr_oper_equal_precedence
+  cpi r17, '/'
+  breq expr_oper_equal_precedence
+
+expr_oper_higher_precedence:
+  ; higher precedence, push
+  inc ZL
+  st Z, r16
+  rjmp expr_next
+
+expr_oper_check_plusminus_precedence:
+
+  ; its a plus or a minus, check stack for equal
+  cpi r17, '+'
+  breq expr_oper_equal_precedence
+  cpi r17, '-'
+  breq expr_oper_equal_precedence
+
+  ; lower precedence then stack. pop and output, then retest
+  dec ZL
+  st Y+, r17
+
+  rjmp expr_try_oper
+
+expr_oper_equal_precedence:
+
+  ; equal precedence, pop and output, then push
+  ld r17, -Z
+  st Y+, r17
+
+  inc ZL
+  st Z, r17
+  rjmp expr_next
+
+
+
 
 
 execute_program:
@@ -1161,3 +1387,5 @@ text_error_no_such_line:
   .db "NO SUCH LINE", 0
 text_error_out_of_memory:
   .db "OUT OF MEMORY", 0
+text_error_mismatched_parens:
+  .db "MISMATCHED PARENS", 0
