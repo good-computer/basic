@@ -120,13 +120,13 @@ main:
   ; say hello
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
-  rcall usart_print
+  rcall usart_print_static
   ldi ZL, low(text_banner*2)
   ldi ZH, high(text_banner*2)
-  rcall usart_print
+  rcall usart_print_static
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
-  rcall usart_print
+  rcall usart_print_static
 
 
 main_loop:
@@ -172,10 +172,10 @@ main_loop:
   ; show the prompt
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
-  rcall usart_print
+  rcall usart_print_static
   ldi ZL, low(text_prompt*2)
   ldi ZH, high(text_prompt*2)
-  rcall usart_print
+  rcall usart_print_static
 
   ; read a line
   rcall usart_line_input
@@ -188,12 +188,22 @@ main_loop:
   breq main_loop
 
   ; show error text
+  clt ; immediate
   rcall handle_error
   rjmp main_loop
 
 
-; unrecoverable error
+; output error info
+; inputs:
+;   r_error: error code
+;   T: if set, include "IN LINE XXXXX"
+;   r16:r17: if T set, line number
 handle_error:
+
+  ; if T set, push r16:r17 for later
+  brtc PC+3
+  push r16
+  push r17
 
   ; all error text starts with '?', oldschool
   ldi r16, '?'
@@ -220,12 +230,30 @@ handle_error:
   ; print it
   mov ZL, XL
   mov ZH, XH
+  rcall usart_print_static
+
+  ; do line number
+  brtc error_newline
+
+  ldi ZL, low(text_in_line*2)
+  ldi ZH, high(text_in_line*2)
+  rcall usart_print_static
+
+  pop r17
+  pop r16
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+  rcall format_number
+
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
   rcall usart_print
 
+error_newline:
   ; and the newline
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
-  rjmp usart_print
+  rjmp usart_print_static
 
 error_lookup_table:
   .dw text_error_no_such_keyword*2
@@ -941,19 +969,26 @@ execute_mainloop:
   brcc PC+2
   inc r_next_h
 
-  ; skip the line number
-  adiw XL, 2
+  ; push line number in case we have to report an error
+  ld r16, X+
+  push r16
+  ld r16, X+
+  push r16
 
   ; statement now at X, execute it
   rcall execute_statement
+
+  ; pop line number back for error report
+  pop r17
+  pop r16
 
   ; error check
   or r_error, r_error
   breq execute_mainloop
 
   ; error
+  set ; include line number
   rcall handle_error
-  ; XXX IN LINE 30
 
   ; program done!
 execute_done:
@@ -1250,14 +1285,23 @@ usart_tx_byte:
 ; transmit a null-terminated string via the usart
 ; inputs:
 ;   Z: pointer to start of string in program memory
-usart_print:
+usart_print_static:
   lpm r16, Z+
   cpi r16, 0
   breq PC+3
-
   rcall usart_tx_byte
-  rjmp usart_print
+  rjmp PC-4
+  ret
 
+; transmit a null-terminated string via the usart
+; inputs:
+;   Z: pointer to start of string in sram
+usart_print:
+  ld r16, Z+
+  cpi r16, 0
+  breq PC+3
+  rcall usart_tx_byte
+  rjmp PC-4
   ret
 
 
@@ -1428,6 +1472,9 @@ text_banner:
   .db "GOOD COMPUTER", 0
 text_prompt:
   .db "BASIC> ", 0
+
+text_in_line:
+  .db " IN LINE ", 0
 
 text_error_no_such_keyword:
   .db "NO SUCH KEYWORD", 0
