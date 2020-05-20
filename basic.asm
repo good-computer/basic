@@ -297,7 +297,8 @@ handle_line_input:
   ldi r_error, error_number_out_of_range
   ret
 
-  ; XXX if at end of buffer, delete this line
+  ; if we got a line number, go to program parsing
+  brts parse_stored_instruction
 
   ; parse the line back into the input buffer (as op buffer)
   ldi YL, low(input_buffer)
@@ -305,22 +306,12 @@ handle_line_input:
 
   rcall parse_statement
 
+  ; XXX skip remaining whitespace and look for end of buffer, error if not
+
   ; bail on parse error
   or r_error, r_error
   breq PC+2
   ret
-
-  ; XXX skip remaining whitespace and look for end of buffer, error if not
-
-  ; XXX dump the op buffer
-  ;ldi ZL, low(input_buffer)
-  ;ldi ZH, high(input_buffer)
-  ;ldi r16, 0x10
-  ;ldi r17, 0x00
-  ;rcall usart_tx_bytes_hex
-
-  ; check if we have a line number
-  brts find_instruction_location
 
   ; no line number, this is immediate mode and we can just execute it
   ldi XL, low(input_buffer)
@@ -330,8 +321,28 @@ handle_line_input:
 
   ret
 
+parse_stored_instruction:
+
+  ; XXX duplicated immediate mode, because we can't keep T flag for
+  ; immediate/stored across parse_statement and I'm not sure how to handle it
+
+  ; parse the line back into the input buffer (as op buffer)
+  ldi YL, low(input_buffer)
+  ldi YH, high(input_buffer)
+
+  rcall parse_statement
+
+  ; XXX skip remaining whitespace and look for end of buffer, error if not
+
+  ; bail on parse error
+  or r_error, r_error
+  breq PC+2
+  ret
+
 find_instruction_location:
   ; we have a line number, so we need to add it to the program
+
+  ; XXX if at end of buffer, delete this line
 
   ; Y currently pointing at end of op we just parsed. subtract start of buffer
   ; to find length
