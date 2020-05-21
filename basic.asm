@@ -184,7 +184,7 @@ main_loop:
   rcall handle_line_input
 
   ; error check
-  or r_error, r_error
+  tst r_error
   breq main_loop
 
   ; show error text
@@ -285,7 +285,7 @@ handle_line_input:
 
   ; return if buffer is empty
   ld r16, X
-  or r16, r16
+  tst r16
   brne PC+2
   ret
 
@@ -310,12 +310,12 @@ handle_line_input:
   ; XXX skip remaining whitespace and look for end of buffer, error if not
 
   ; bail on parse error
-  or r_error, r_error
+  tst r_error
   breq PC+2
   ret
 
   ; if we have a line number, store it
-  or r15, r15
+  tst r15
   brne find_instruction_location
 
   ; no line number, this is immediate mode and we can just execute it
@@ -353,7 +353,7 @@ consider_instruction:
 
   ; check for the empty end-of-program instruction
   ; if its here, we can go directly to append
-  or r16, r16
+  tst r16
   breq append_instruction
 
   ; advance past the length field
@@ -602,7 +602,7 @@ keyword_loop:
 keyword_end:
 
   ; but if its zero, we hit the end of the keyword table, so it wasn't found
-  or r17, r17
+  tst r17
   brne PC+3
 
   ldi r_error, error_no_such_keyword
@@ -672,7 +672,7 @@ parse_print:
   rcall parse_expression
 
   ; bail on parse error
-  or r_error, r_error
+  tst r_error
   brne parse_print_done
 
   ; XXX expr-list
@@ -947,7 +947,7 @@ execute_mainloop:
 
   ; look for end-of-program marker (length 0)
   ld r16, X+
-  or r16, r16
+  tst r16
   breq execute_done
 
   ; advance next instruction pointer
@@ -971,7 +971,7 @@ execute_mainloop:
   pop r16
 
   ; error check
-  or r_error, r_error
+  tst r_error
   breq execute_mainloop
 
   ; error
@@ -1025,7 +1025,7 @@ op_table:
 op_print:
   rcall eval_expression
 
-  or r_error, r_error
+  tst r_error
   breq PC+2
   ret
 
@@ -1066,7 +1066,7 @@ op_goto_search_loop:
 
   ; look for end-of-program marker (length 0)
   ld r20, X+
-  or r20, r20
+  tst r20
   breq op_goto_not_found
 
   ; load line number
@@ -1126,7 +1126,7 @@ op_list:
 
 op_list_next:
   ld r16, X
-  or r16, r16
+  tst r16
   brne PC+2
   ret
 
@@ -1198,7 +1198,7 @@ eval_next:
   ld r16, X+
 
   ; terminator
-  cpi r16, 0x0
+  tst r16
   brne eval_check_literal
 
   ; pop result!
@@ -1490,7 +1490,7 @@ usart_tx_byte:
 ;   Z: pointer to start of string in program memory
 usart_print_static:
   lpm r16, Z+
-  cpi r16, 0
+  tst r16
   breq PC+3
   rcall usart_tx_byte
   rjmp PC-4
@@ -1501,7 +1501,7 @@ usart_print_static:
 ;   Z: pointer to start of string in sram
 usart_print:
   ld r16, Z+
-  cpi r16, 0
+  tst r16
   breq PC+3
   rcall usart_tx_byte
   rjmp PC-4
@@ -1638,7 +1638,7 @@ usart_tx_bytes_hex_next:
 
   dec r18
   brne PC+4
-  cpi r19, 0
+  tst r19
   breq usart_tx_bytes_hex_done
   dec r19
 
