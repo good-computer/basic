@@ -36,6 +36,7 @@
 .equ error_out_of_memory       = 5
 .equ error_mismatched_parens   = 6
 .equ error_overflow            = 7
+.equ error_expected_operand    = 8
 
 
 .cseg
@@ -262,6 +263,7 @@ error_lookup_table:
   .dw text_error_out_of_memory*2
   .dw text_error_mismatched_parens*2
   .dw text_error_overflow*2
+  .dw text_error_expected_operand*2
 
 
 ; move X forward until there's no whitespace under it
@@ -666,6 +668,17 @@ keyword_parse_table:
 
 
 parse_print:
+
+  rcall skip_whitespace
+
+  ; check for end of input, no expression is valid
+  ld r16, X
+  tst r16
+  brne PC+2
+
+  ; nothing to parse, get out of here
+  ret
+
   push r2
   push r3
 
@@ -732,11 +745,20 @@ parse_expression:
   ldi ZL, low(expr_stack-1)
   ldi ZH, high(expr_stack-1)
 
+  ; expect operand to start
+  clr r20
+
 expr_next:
   rcall skip_whitespace
 
   ; next char
   ld r16, X
+
+  ; check expectations
+  tst r20
+  brne expr_check_operator
+
+  ; expecting an operand. value types, and opening paren allowed
 
   ; operands (numbers, variables) go to the output buffer, with suitable
   ; micro-ops so we know how to resolve them at runtime
@@ -762,18 +784,43 @@ expr_next:
   st Y+, r2
   st Y+, r3
 
+  ; operator next
+  ldi r20, 1
+
   rjmp expr_next
 
 expr_maybe_var:
 
   ; XXX check for var, send to output buffer
 
-expr_maybe_oper:
+expr_maybe_left_paren:
+
+  ; left paren goes straight to the stack
+  cpi r16, '('
+  brne expr_not_operand
+
+  ; take it
+  adiw XL, 1
+
+  ; stack it
+  inc ZL
+  st Z, r16
+
+  ; want operand again, so no change to r20
+  rjmp expr_next
+
+expr_not_operand:
+
+  ; sorry, really needed that thing
+  ldi r_error, error_expected_operand
+  ret
+
+expr_check_operator:
 
   ; inital check that its an operator; this is doubling up a little but makes
   ; future checks easier
-  ; operators are ( ) * + - / (28-2b,2d,2f)
-  cpi r16, 0x28
+  ; operators are ) * + - / (29-2b,2d,2f)
+  cpi r16, 0x29
   brlo expr_dump_remaining_opers
   cpi r16, 0x2c
   brlo expr_start_oper_stack
@@ -854,22 +901,15 @@ expr_try_oper:
   ; see what's on the stack
   ld r17, Z
   cpi r17, '('
-  brne expr_left_paren
+  brne expr_oper_precedence
 
 expr_push_oper:
   ; stack empty or left paren on stack, so push the oper
   inc ZL
   st Z, r16
-  rjmp expr_next
 
-expr_left_paren:
-
-  ; left paren goes straight to the stack
-  cpi r16, '('
-  brne expr_oper_precedence
-
-  inc ZL
-  st Z, r16
+  ; operand next
+  clr r20
   rjmp expr_next
 
 expr_oper_precedence:
@@ -901,6 +941,9 @@ expr_oper_higher_precedence:
   ; higher precedence, push
   inc ZL
   st Z, r16
+
+  ; operand next
+  clr r20
   rjmp expr_next
 
 expr_oper_check_plusminus_precedence:
@@ -925,6 +968,9 @@ expr_oper_equal_precedence:
 
   inc ZL
   st Z, r17
+
+  ; operand next
+  clr r20
   rjmp expr_next
 
 
@@ -1692,3 +1738,5 @@ text_error_mismatched_parens:
   .db "MISMATCHED PARENS", 0
 text_error_overflow:
   .db "OVERFLOW", 0
+text_error_expected_operand:
+  .db "EXPECTED OPERAND", 0
