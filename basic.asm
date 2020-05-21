@@ -295,7 +295,12 @@ handle_line_input:
   rcall parse_number
 
   ; overflow?
-  brvc PC+3
+  brvs PC+3
+
+  ; negative?
+  tst r3
+  brpl PC+3
+
   ldi r_error, error_number_out_of_range
   ret
 
@@ -516,19 +521,43 @@ parse_number:
   ldi r18, 10 ; for multiplying by 10 repeatedly
   clr r19
 
+  ; check first char for negation
+  ld r20, X
+  cpi r20, '-'
+  brne parse_number_loop
+  ; skip it, leave it in r20 to test at the end
+  adiw XL, 1
+
 parse_number_loop:
   ; get input char and check range
-  ld r17, X+
+  ld r17, X
   cpi r17, 0x30
-  brsh PC+3
+  brlo PC+3
+  cpi r17, 0x3a
+  brlo digit_valid
 
-  ; out of range, roll X back one char and return
-  ld r17, -X
+  ; out of range, this is the end
+
+  ; did we read anything?
+  brts PC+3
+
+  ; no, just roll X back and abort
+  movw XL, r6
   ret
 
-  cpi r17, 0x3a
-  brsh PC-3
+  ; see if we need to negate
+  cpi r20, '-'
+  brne PC+5
 
+  ; do so!
+  com r3
+  neg r2
+  ldi r17, 0xff
+  sbc r3, r17
+
+  ret
+
+digit_valid:
   ; multiply accumulator low byte by 10
   mul r2, r18
   movw r4, r0
@@ -544,6 +573,9 @@ parse_number_loop:
   ; actually read something, flag this
   set
 
+  ; take char
+  adiw XL, 1
+
   ; reload the accumulator after multiplying
   movw r2, r4
 
@@ -552,9 +584,9 @@ parse_number_loop:
   add r2, r17
   brcc parse_number_loop
   inc r3
-  brne parse_number_loop
+  brpl parse_number_loop
 
-  ; overflowed, restore, X flag and abort
+  ; overflowed, restore X, flag and abort
 parse_number_overflow:
   movw XL, r6
   sev
@@ -763,11 +795,6 @@ expr_next:
   ; operands (numbers, variables) go to the output buffer, with suitable
   ; micro-ops so we know how to resolve them at runtime
 
-  cpi r16, 0x30
-  brlo expr_maybe_var
-  cpi r16, 0x3a
-  brsh expr_maybe_var
-
   ; a number, try to parse it
   rcall parse_number
 
@@ -775,6 +802,9 @@ expr_next:
   brvc PC+3
   ldi r_error, error_number_out_of_range
   ret
+
+  ; did we even get a number?
+  brtc expr_maybe_var
 
   ; literal number marker
   ldi r16, 0x1
@@ -1284,7 +1314,7 @@ eval_check_add:
   ; A + B
   add r16, r18
   adc r17, r19
-  brcc PC+3
+  brvc PC+3
 
   ldi r_error, error_overflow
   ret
@@ -1312,7 +1342,7 @@ eval_check_sub:
   ; A - B
   sub r16, r18
   sbc r17, r19
-  brcc PC+3
+  brvc PC+3
 
   ldi r_error, error_overflow
   ret
@@ -1458,6 +1488,19 @@ format_number:
 
   ; accumulator, to handle zero padding
   clr r19
+
+  ; test negative
+  tst r17
+  brpl format_number_loop
+
+  ; negate
+  com r17
+  neg r16
+  sbci r17, 0xff
+
+  ; emit leading minus sign
+  ldi r18, '-'
+  st X+, r18
 
 format_number_loop:
   ldi r18, 0x2f ; just before ASCII '0'
