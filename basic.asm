@@ -299,8 +299,9 @@ handle_line_input:
   ldi r_error, error_number_out_of_range
   ret
 
-  ; if we got a line number, go to program parsing
-  brts parse_stored_instruction
+  ; save T flag so we can test immediate mode later
+  clr r15
+  bld r15, 0
 
   ; parse the line back into the input buffer (as op buffer)
   ldi YL, low(input_buffer)
@@ -314,6 +315,10 @@ handle_line_input:
   or r_error, r_error
   breq PC+2
   ret
+
+  ; if we have a line number, store it
+  or r15, r15
+  brne find_instruction_location
 
   ; no line number, this is immediate mode and we can just execute it
   ldi XL, low(input_buffer)
@@ -321,24 +326,6 @@ handle_line_input:
 
   rcall execute_statement
 
-  ret
-
-parse_stored_instruction:
-
-  ; XXX duplicated immediate mode, because we can't keep T flag for
-  ; immediate/stored across parse_statement and I'm not sure how to handle it
-
-  ; parse the line back into the input buffer (as op buffer)
-  ldi YL, low(input_buffer)
-  ldi YH, high(input_buffer)
-
-  rcall parse_statement
-
-  ; XXX skip remaining whitespace and look for end of buffer, error if not
-
-  ; bail on parse error
-  or r_error, r_error
-  breq PC+2
   ret
 
 find_instruction_location:
