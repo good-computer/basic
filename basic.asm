@@ -22,11 +22,11 @@
 .equ program_buffer_end = expr_stack - 1
 
 ; global registers
-.def r_error  = r25 ; last error code
-.def r_next_l = r23 ; memory location of next instruction
-.def r_next_h = r24
-.def r_top_l  = r21 ; pointer to top of program (one past end-of-program marker)
-.def r_top_h  = r22
+.def r_error  = r21 ; last error code
+.def r_next_l = r22 ; memory location of next instruction
+.def r_next_h = r23
+.def r_top_l  = r24 ; pointer to top of program (one past end-of-program marker)
+.def r_top_h  = r25
 
 ; error codes
 .equ error_no_such_keyword     = 1
@@ -112,8 +112,7 @@ reset:
   st X+, r16
 
   ; set top pointer just past the zero-length instruction
-  mov r_top_l, XL
-  mov r_top_h, XH
+  movw r_top_l, XL
 
 
 main:
@@ -229,8 +228,7 @@ handle_error:
   lpm XH, Z+
 
   ; print it
-  mov ZL, XL
-  mov ZH, XH
+  movw ZL, XL
   rcall usart_print_static
 
   ; do line number
@@ -386,8 +384,7 @@ consider_instruction:
 append_instruction:
 
   ; need to check if there's room. compute position of new top pointer
-  mov XL, YL
-  mov XH, YH
+  movw XL, YL
   adiw XL, 4 ; length + 2xlineno + end-of-program
   add XL, r16
   brcc PC+2
@@ -417,8 +414,7 @@ open_instruction:
   ; make a gap of #r24 + 3 bytes here
 
   ; get pointer to top of memory
-  mov XL, r_top_l
-  mov XH, r_top_h
+  movw XL, r_top_l
 
   ; add room for the instruction, making X our move target
   adiw XL, 3
@@ -438,12 +434,10 @@ open_instruction:
   ret
 
   ; move source is just the existing top
-  mov ZL, r_top_l
-  mov ZH, r_top_h
+  movw ZL, r_top_l
 
   ; new top is in X
-  mov r_top_l, XL
-  mov r_top_h, XH
+  movw r_top_l, XL
 
   ; Y currently pointing at the oplist of the instruction we're inserting
   ; before. roll it back a bit
@@ -491,8 +485,7 @@ store_end_of_program:
   st Y+, r16
 
   ; moved top of memory
-  mov r_top_l, YL
-  mov r_top_h, YH
+  movw r_top_l, YL
 
   ret
 
@@ -508,8 +501,7 @@ store_end_of_program:
 parse_number:
 
   ; store X in case we need to rewind
-  mov r7, XL
-  mov r8, XH
+  movw r6, XL
 
   ; clear result flags
   clt
@@ -537,12 +529,11 @@ parse_number_loop:
 
   ; multiply accumulator low byte by 10
   mul r2, r18
-  mov r5, r0
-  mov r6, r1
+  movw r4, r0
 
   ; multiply accumulator high byte by 10
   mul r3, r18
-  add r6, r0
+  add r5, r0
   brcc PC+2
   inc r1
   cp r1, r19
@@ -552,8 +543,7 @@ parse_number_loop:
   set
 
   ; reload the accumulator after multiplying
-  mov r2, r5
-  mov r3, r6
+  movw r2, r4
 
   ; convert digit to value, and add
   andi r17, 0xf
@@ -564,8 +554,7 @@ parse_number_loop:
 
   ; overflowed, restore, X flag and abort
 parse_number_overflow:
-  mov XL, r7
-  mov XH, r8
+  movw XL, r6
   sev
   ret
 
@@ -578,8 +567,7 @@ parse_statement:
   rcall skip_whitespace
 
   ; take copy of pointer to start of statement, so we can reset it
-  mov r4, XL
-  mov r5, XH
+  movw r4, XL
 
   ; start of keyword table
   ldi ZL, low(keyword_table*2)
@@ -602,8 +590,7 @@ keyword_loop:
   ; chars didn't match, so we have to start over on the next keyword
 
   ; reset X to start of input keyword
-  mov XL, r4
-  mov XH, r5
+  movw XL, r4
 
   ; walk Z forward to the next keyword
   lpm r17, Z+
@@ -956,8 +943,7 @@ execute_program:
 execute_mainloop:
 
   ; setup to read line
-  mov XL, r_next_l
-  mov XH, r_next_h
+  movw XL, r_next_l
 
   ; look for end-of-program marker (length 0)
   ld r16, X+
@@ -1070,42 +1056,40 @@ op_goto:
   ld r5, X+
 
   ; get pointer to start of program buffer
-  ldi r19, low(program_buffer)
-  ldi r20, high(program_buffer)
+  ldi r18, low(program_buffer)
+  ldi r19, high(program_buffer)
 
 op_goto_search_loop:
 
   ; setup to read line
-  mov XL, r19
-  mov XH, r20
+  movw XL, r18
 
   ; look for end-of-program marker (length 0)
-  ld r16, X+
-  or r16, r16
+  ld r20, X+
+  or r20, r20
   breq op_goto_not_found
 
   ; load line number
+  ld r16, X+
   ld r17, X+
-  ld r18, X+
 
-  cp r4, r17
+  cp r4, r16
   brne PC+2
-  cp r5, r18
+  cp r5, r17
   breq op_goto_found
 
   ; advance to next instruction
-  add r19, r16 ; skip #r16 bytes of opbuffer
-  ldi r16, 3
-  adc r19, r16 ; skip length+lineno
+  add r18, r20 ; skip #r20 bytes of opbuffer
+  ldi r20, 3
+  adc r18, r20 ; skip length+lineno
   brcc op_goto_search_loop
-  inc r20
+  inc r19
   rjmp op_goto_search_loop
 
 op_goto_found:
 
   ; found it, set the next line pointer for execution to here
-  mov r_next_l, r19
-  mov r_next_h, r20
+  movw r_next_l, r18
 
   ; return from command; mainloop will continue at the line we set
   ret
@@ -1149,8 +1133,7 @@ op_list_next:
   ldi r17, 3
   add r16, r17
 
-  mov ZL, XL
-  mov ZH, XH
+  movw ZL, XL
   clr r17
 
   add XL, r16
@@ -1315,11 +1298,9 @@ eval_check_mul:
   ; we're going to need it in the future anyway.
   clr r20
   mul r17, r19
-  mov r4, r0
-  mov r5, r1
+  movw r4, r0
   mul r16, r18
-  mov r2, r0
-  mov r3, r1
+  movw r2, r0
   mul r17, r18
   add r3, r0
   adc r4, r1
@@ -1631,8 +1612,7 @@ usart_tx_byte_hex:
 ;   Y: pointer to start of data in sram
 ;   r16: number of bytes to transmit
 usart_tx_bytes_hex:
-  mov r18, r16
-  mov r19, r17
+  movw r18, r16
   ldi r20, 0x10
 
 usart_tx_bytes_hex_start_line:
