@@ -1443,6 +1443,14 @@ format_number_loop:
   cpi ZL, low(decades*2)+5*2
   brne format_number_loop
 
+  ; if we didn't emit anything, then it was zero
+  tst r19
+  brne PC+3
+
+  ; ascii zero
+  ldi r18, 0x30
+  st X+, r18
+
   ; trailing zero
   clr r16
   st X+, r16
