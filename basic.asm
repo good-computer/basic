@@ -235,8 +235,8 @@ handle_error:
   ; do line number
   brtc error_newline
 
-  ldi ZL, low(text_in_line*2)
-  ldi ZH, high(text_in_line*2)
+  ldi ZL, low(text_at_line*2)
+  ldi ZH, high(text_at_line*2)
   rcall usart_print_static
 
   pop r17
@@ -1721,8 +1721,8 @@ text_banner:
 text_prompt:
   .db "BASIC> ", 0
 
-text_in_line:
-  .db " IN LINE ", 0
+text_at_line:
+  .db " AT LINE ", 0
 
 text_error_no_such_keyword:
   .db "NO SUCH KEYWORD", 0
