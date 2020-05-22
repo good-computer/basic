@@ -37,6 +37,7 @@
 .equ error_mismatched_parens   = 6
 .equ error_overflow            = 7
 .equ error_expected_operand    = 8
+.equ error_unterminated_string = 9
 
 
 .cseg
@@ -264,6 +265,7 @@ error_lookup_table:
   .dw text_error_mismatched_parens*2
   .dw text_error_overflow*2
   .dw text_error_expected_operand*2
+  .dw text_error_unterminated_string*2
 
 
 ; move X forward until there's no whitespace under it
@@ -711,6 +713,12 @@ parse_print:
   ; nothing to parse, get out of here
   ret
 
+  ; see a quote, start of string!
+  cpi r16, '"'
+  brne PC+2
+
+  rjmp parse_string
+
   push r2
   push r3
 
@@ -767,6 +775,38 @@ parse_let:
   ret
 
 parse_gosub:
+  ret
+
+
+parse_string:
+
+  ; take the double-quote
+  ld r16, X+
+  st Y+, r16
+
+string_loop:
+
+  ; take everything up to and the closing double-quote
+  ld r16, X+
+
+  ; hit end of input early?
+  tst r16
+  brne PC+3
+
+  ldi r_error, error_unterminated_string
+  ret
+
+  ; ending double-quote?
+  cpi r16, '"'
+  breq PC+3
+
+  st Y+, r16
+  rjmp string_loop
+
+  ; add terminator
+  clr r16
+  st Y+, r16
+
   ret
 
 
@@ -1099,6 +1139,23 @@ op_table:
   rjmp op_reset   ; 0x0f [RESET]
 
 op_print:
+
+  ; check for string first
+  ld r16, X
+  cpi r16, '"'
+  brne print_expr
+
+  ; advance past double-quote
+  adiw XL, 1
+
+  movw ZL, XL
+  rcall usart_print
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rjmp usart_print_static
+
+print_expr:
   rcall eval_expression
 
   tst r_error
@@ -1811,3 +1868,5 @@ text_error_overflow:
   .db "OVERFLOW", 0
 text_error_expected_operand:
   .db "EXPECTED OPERAND", 0
+text_error_unterminated_string:
+  .db "UNTERMINATED STRING", 0
