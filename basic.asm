@@ -1121,7 +1121,10 @@ op_print:
   ldi ZH, high(input_buffer)
   rcall usart_print
 
-  ret
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rjmp usart_print_static
+
 
 op_if:
   ret
