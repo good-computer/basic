@@ -1529,7 +1529,7 @@ format_number_loop:
   st X+, r18
 
   ; move to next decade
-  cpi ZL, low(decades*2)+5*2
+  cpi ZL, low((decades+5)*2)
   brne format_number_loop
 
   ; if we didn't emit anything, then it was zero
