@@ -1369,33 +1369,39 @@ eval_check_mul:
 
   ; A * B
 
-  ; this is a full 16x16->32 bit multiply, even though we're limited to 16-bit
-  ; math for the moment. this is actually slightly easier (for me) to write and
-  ; we're going to need it in the future anyway.
-  clr r20
-  mul r17, r19
-  movw r4, r0
-  mul r16, r18
-  movw r2, r0
-  mul r17, r18
-  add r3, r0
-  adc r4, r1
-  adc r5, r20
-  mul r16, r19
-  add r3, r0
-  adc r4, r1
-  adc r5, r20
+  ; taken from app note AVR200 (mul16s)
+  clr  r3         ; clear result byte 3
+  sub  r2, r2     ; clear result byte 2 and carry
+  ldi  r20, 16    ; init loop counter
+mul_loop:
+  brcc PC+3       ; if carry (previous bit) set
+  add  r2, r16    ;   add multiplicand Low to result byte 2
+  adc  r3, r17    ;   add multiplicand High to result byte 3
+  sbrc r18, 0     ; if current bit set
+  sub  r2, r16    ;   sub multiplicand Low from result byte 2
+  sbrc r18, 0     ; if current bit set
+  sbc  r3, r17    ;   sub multiplicand High from result byte 3
+  asr  r3         ; shift right result and multiplier
+  ror  r2
+  ror  r19
+  ror  r18
+  dec  r20        ; decrement counter
+  brne mul_loop   ; if not done, loop more
 
-  ; check overflow
-  or r4, r5
+  ; check overflow. top two bytes should be sign extension and that's all
+  and r2, r3
+  tst r19
+  brpl PC+2
+  inc r2
+  tst r2
   breq PC+3
 
   ldi r_error, error_overflow
   ret
 
   ; push result
-  st Y+, r2
-  st Y+, r3
+  st Y+, r18
+  st Y+, r19
 
   rjmp eval_next
 
@@ -1416,25 +1422,44 @@ eval_check_div:
   ld r17, -Y
   ld r16, -Y
 
-  ; taken from AVR200 app note
-  clr r4        ; clear remainder Low byte
-  sub r5, r5    ; clear remainder High byte and carry
-  ldi r20, 17   ; init loop counter
+  ; taken from app note AVR200 (div16s)
+  mov  r4, r17        ; move dividend High to sign register
+  eor  r4, r19        ; xor divisor High with sign register
+  sbrs r17, 7         ; if MSB in dividend set
+  rjmp PC+5
+  com  r17            ;    change sign of dividend
+  com  r16
+  subi r16, 0xff
+  sbci r16, 0xff
+  sbrs r19, 7         ; if MSB in divisor set
+  rjmp PC+4
+  com  r19            ;    change sign of divisor
+  neg  r18
+  sbci r19, 0xff
+  clr  r2             ; clear remainder Low byte
+  sub  r3, r3         ; clear remainder High byte and carry
+  ldi  r20, 17        ; init loop counter
 div_loop:
-  rol r16       ; shift left dividend
-  rol r17
-  dec r20       ; decrement counter
-  breq div_done ; if done
-  rol r4        ; shift dividend into remainder
-  rol r5
-  sub r4, r18   ; remainder = remainder - divisor
-  sbc r5, r19
-  brcc PC+5     ; if result negative
-  add r4, r18   ;     restore remainder
-  adc r5, r19
-  clc           ; clear carry to be shifted into result
-  rjmp div_loop ; else
-  sec           ; set carry to be shifted into result
+  rol  r16            ; shift left dividend
+  rol  r17
+  dec  r20            ; decrement counter
+  brne PC+8           ; if done
+  sbrs r4, 7          ;    if MSB in sign register set
+  rjmp PC+4
+  com  r17            ;        change sign of result
+  neg  r16
+  sbci r17, 0xff
+  rjmp div_done       ;    return
+  rol  r2             ; shift dividend into remainder
+  rol  r3
+  sub  r2, r18        ; remainder = remainder - divisor
+  sbc  r3, r19        ;
+  brcc PC+5           ; if result negative
+  add  r2, r18        ;    restore remainder
+  adc  r3, r19
+  clc                 ;    clear carry to be shifted into result
+  rjmp div_loop       ; else
+  sec                 ;    set carry to be shifted into result
   rjmp div_loop
 
 div_done:
