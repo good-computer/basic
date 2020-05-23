@@ -1199,10 +1199,6 @@ print_expr:
   push XH
   ldi XL, low(input_buffer)
   ldi XH, high(input_buffer)
-  st X+, r16
-  st X+, r17
-  ldi XL, low(input_buffer)
-  ldi XH, high(input_buffer)
   rcall format_number
   pop XH
   pop XL
