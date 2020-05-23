@@ -810,7 +810,14 @@ parse_let:
 
   rcall skip_whitespace
 
-  rjmp parse_expression
+  push r2
+  push r3
+  rcall parse_expression
+  pop r3
+  pop r2
+
+  ret
+
 
 
 parse_gosub:
