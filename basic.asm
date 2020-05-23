@@ -17,9 +17,13 @@
 .equ expr_stack     = input_buffer - 0x20
 .equ expr_stack_end = input_buffer - 1
 
-; linked list of program instructions 0060->
+; list of program instructions 0060->
 .equ program_buffer     = SRAM_START
 .equ program_buffer_end = expr_stack - 1
+
+; list of variables <-0x37f (reverse direction)
+.equ variable_buffer     = expr_stack - 1
+.equ variable_buffer_end = SRAM_START
 
 ; global registers
 .def r_error  = r21 ; last error code
@@ -112,7 +116,13 @@ reset:
   ldi XL, low(program_buffer)
   ldi XH, high(program_buffer)
   clr r16
-  st X+, r16
+  st X, r16
+
+  ; clear variable space
+  ldi XL, low(variable_buffer)
+  ldi XH, high(variable_buffer)
+  clr r16
+  st X, r16
 
   ; set top pointer just past the zero-length instruction
   movw r_top_l, XL
@@ -339,6 +349,12 @@ handle_line_input:
 
 find_instruction_location:
   ; we have a line number, so we need to add it to the program
+
+  ; clear variable space
+  ldi XL, low(variable_buffer)
+  ldi XH, high(variable_buffer)
+  clr r16
+  st X, r16
 
   ; XXX if at end of buffer, delete this line
 
@@ -1270,6 +1286,30 @@ op_input:
   ret
 
 op_let:
+
+  ; get variable name
+  ld r16, X+
+  push r16
+
+  ; do the math
+  rcall eval_expression
+
+  ; setup a storage buffer for the value
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+
+  ; push number
+  st Z+, r16
+  st Z+, r17
+
+  ; reset it
+  sbiw ZL, 2
+
+  pop r16
+  ldi r17, 0x2
+
+  rcall set_variable
+
   ret
 
 op_gosub:
@@ -1311,6 +1351,12 @@ op_list_next:
 
 
 op_run:
+  ; clear variable space
+  ldi XL, low(variable_buffer)
+  ldi XH, high(variable_buffer)
+  clr r16
+  st X, r16
+
   rjmp execute_program
 
 op_end:
@@ -1558,6 +1604,103 @@ div_done:
   st Y+, r17
 
   rjmp eval_next
+
+
+; store a value to a named variable slot
+; inputs:
+;   r16: name of variable
+;   r17: length of value data
+;   Z: value data
+set_variable:
+
+  ; setup pointer to first variable
+  ldi YL, low(variable_buffer)
+  ldi YH, high(variable_buffer)
+
+consider_variable:
+  ; load the length
+  ld r19, Y
+
+  ; look for end-of-variable marker
+  tst r19
+  breq append_variable
+
+  ; load the name
+  ld r18, -Y
+
+  ; compare
+  cp r18, r16
+
+  ; if its the same name, we're replacing it
+  breq replace_variable
+
+  ; not this one, need to try next. take the name
+  sbiw YL, 1
+
+  ; skip #r19 bytes of value
+  sub YL, r19
+  brcc consider_variable
+  dec YH
+  rjmp consider_variable
+
+append_variable:
+
+  ; calculate new end pointer, make sure we have room
+  movw XL, YL
+  sbiw XL, 1
+  sub XL, r17
+  brcc PC+2
+  dec XH
+
+  ; see if we've gone past the end
+  ldi r19, low(variable_buffer_end+1)
+  ldi r20, high(variable_buffer_end+1)
+  cp r19, XL
+  cpc r20, XH
+  brlo PC+3
+
+  ; aww
+  ldi r_error, error_out_of_memory
+  ret
+
+  ; last variable
+  set
+
+  rjmp store_variable
+
+replace_variable:
+
+  ldi r16, 'r'
+  rcall usart_tx_byte
+  rjmp blink_forever
+
+store_variable:
+
+  ; Y at start of variable space
+
+  ; store length
+  st Y, r17
+
+  ; store name
+  st -Y, r16
+
+  ; copy #r17 bytes from Z
+  ld r16, Z+
+  st -Y, r16
+  dec r17
+  brne PC-3
+
+  brts store_end_of_variables
+  ret
+
+store_end_of_variables:
+
+  ; store end marker
+  clr r16
+  st -Y, r16
+
+  ret
+
 
 
 blink_forever:
