@@ -1447,11 +1447,65 @@ eval_check_literal:
 
   ; numeric literal
   cpi r16, 0x1
-  brne eval_check_add
+  brne eval_check_var
 
   ; push number onto stack
   ld r16, X+
   ld r17, X+
+  st Y+, r16
+  st Y+, r17
+
+  rjmp eval_next
+
+eval_check_var:
+
+  ; variable lookup
+  cpi r16, 0x2
+  brne eval_check_add
+
+  ; wanted name
+  ld r16, X+
+
+  ; setup pointer to first variable
+  ldi ZL, low(variable_buffer)
+  ldi ZH, high(variable_buffer)
+
+eval_try_var:
+  ; load the length
+  ld r18, Z
+
+  ; look for end-of-variable marker
+  tst r18
+  brne PC+5
+
+  ; unknown vars yield a 0
+  clr r16
+  st Y+, r16
+  st Y+, r16
+
+  rjmp eval_next
+
+  ; get name
+  ld r17, -Z
+
+  ; compare
+  cp r16, r17
+  breq eval_found_var
+
+  ; not this one, try next. take the name
+  sbiw ZL, 1
+
+  ; skip #r18 bytes of value
+  sub ZL, r18
+  brcc eval_try_var
+  dec ZH
+  rjmp eval_try_var
+
+eval_found_var:
+
+  ; push its value
+  ld r16, -Z
+  ld r17, -Z
   st Y+, r16
   st Y+, r17
 
