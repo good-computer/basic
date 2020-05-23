@@ -900,7 +900,23 @@ expr_next:
 
 expr_maybe_var:
 
-  ; XXX check for var, send to output buffer
+  ; what about a variable?
+  rcall parse_var
+
+  ; maybe!
+  brtc expr_maybe_left_paren
+
+  ; variable lookup!
+  ldi r17, 0x2
+  st Y+, r17
+
+  ; var name
+  st Y+, r16
+
+  ; operator next
+  ldi r20, 1
+
+  rjmp expr_next
 
 expr_maybe_left_paren:
 
