@@ -1749,6 +1749,16 @@ append_variable:
 
 replace_variable:
 
+  ; replacing this slot. check if lenghts match
+  cp r17, r19
+  brne adjust_variable_space
+
+  ; same space, so back Y up to the length, then store here
+  adiw YL, 1
+  rjmp store_variable
+
+adjust_variable_space:
+
   ldi r16, 'r'
   rcall usart_tx_byte
   rjmp blink_forever
