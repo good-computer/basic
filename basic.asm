@@ -38,6 +38,7 @@
 .equ error_overflow            = 7
 .equ error_expected_operand    = 8
 .equ error_unterminated_string = 9
+.equ error_expected_variable   = 10
 
 
 .cseg
@@ -266,6 +267,7 @@ error_lookup_table:
   .dw text_error_overflow*2
   .dw text_error_expected_operand*2
   .dw text_error_unterminated_string*2
+  .dw text_error_expected_variable*2
 
 
 ; move X forward until there's no whitespace under it
@@ -772,7 +774,26 @@ parse_input:
   ret
 
 parse_let:
+
+  rcall parse_var
+
+  ; bail on parse error
+  tst r_error
+  breq PC+2
   ret
+
+  rcall skip_whitespace
+
+  ; skip the =
+  ld r16, X
+  cpi r16, '='
+  brne PC+2
+  adiw XL, 1
+
+  rcall skip_whitespace
+
+  rjmp parse_expression
+
 
 parse_gosub:
   ret
@@ -1044,7 +1065,19 @@ expr_oper_equal_precedence:
   rjmp expr_next
 
 
+parse_var:
 
+  ld r16, X+
+  cpi r16, 'A'
+  brlo PC+5
+  cpi r16, 'Z'+1
+  brsh PC+3
+
+  st Y+, r16
+  ret
+
+  ldi r_error, error_expected_variable
+  ret
 
 
 execute_program:
@@ -1870,3 +1903,5 @@ text_error_expected_operand:
   .db "EXPECTED OPERAND", 0
 text_error_unterminated_string:
   .db "UNTERMINATED STRING", 0
+text_error_expected_variable:
+  .db "EXPECTED VARIABLE", 0
