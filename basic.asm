@@ -1054,7 +1054,7 @@ expr_oper_check_plusminus_precedence:
 expr_oper_equal_precedence:
 
   ; equal precedence, pop and output, then push
-  ld r17, -Z
+  dec ZL
   st Y+, r17
 
   inc ZL
