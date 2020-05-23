@@ -791,12 +791,14 @@ parse_input:
 
 parse_let:
 
+  ; find a variable name
   rcall parse_var
+  brts PC+3
 
-  ; bail on parse error
-  tst r_error
-  breq PC+2
+  ldi r_error, error_expected_variable
   ret
+
+  st Y+, r16
 
   rcall skip_whitespace
 
@@ -1081,18 +1083,25 @@ expr_oper_equal_precedence:
   rjmp expr_next
 
 
+; parse a var name
+; inputs:
+;   X: pointer to variable name, will be moved
+; outputs:
+;   r16: variable name
+;   T:  set if we actually parsed something
 parse_var:
+  clt
 
-  ld r16, X+
+  ld r16, X
   cpi r16, 'A'
   brlo PC+5
   cpi r16, 'Z'+1
   brsh PC+3
 
-  st Y+, r16
-  ret
+  ; found it, take it and flag it
+  adiw XL, 1
+  set
 
-  ldi r_error, error_expected_variable
   ret
 
 
