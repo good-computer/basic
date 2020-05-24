@@ -13,15 +13,20 @@
 .equ input_buffer     = stack_bottom - 0x80
 .equ input_buffer_end = stack_bottom - 1
 
-; expression stack 0360-037f
-.equ expr_stack     = input_buffer - 0x20
-.equ expr_stack_end = input_buffer - 1
+; op buffer 0360-037f->
+; allowed to run into the input buffer if necessary, which almost certainly
+; will be ehader during parse
+.equ op_buffer = input_buffer - 0x20
 
-; gosub stack 0350-035f
+; expression stack 0340-035f
+.equ expr_stack     = op_buffer - 0x20
+.equ expr_stack_end = op_buffer - 1
+
+; gosub stack 0330-033f
 .equ gosub_stack     = expr_stack - 0x10
 .equ gosub_stack_end = expr_stack - 1
 
-; list of variables <-0x34f (reverse direction)
+; list of variables <-0x32f (reverse direction)
 .equ variable_buffer     = gosub_stack - 1
 .equ variable_buffer_end = SRAM_START
 
@@ -335,9 +340,9 @@ handle_line_input:
   clr r_flags
   bld r_flags, 0
 
-  ; parse the line back into the input buffer (as op buffer)
-  ldi YL, low(input_buffer)
-  ldi YH, high(input_buffer)
+  ; parse the line back into the immediate buffer
+  ldi YL, low(op_buffer)
+  ldi YH, high(op_buffer)
 
   rcall parse_statement
 
@@ -353,8 +358,8 @@ handle_line_input:
   brne find_instruction_location
 
   ; no line number, this is immediate mode and we can just execute it
-  ldi XL, low(input_buffer)
-  ldi XH, high(input_buffer)
+  ldi XL, low(op_buffer)
+  ldi XH, high(op_buffer)
 
   rcall execute_statement
 
@@ -374,7 +379,7 @@ find_instruction_location:
   ; Y currently pointing at end of op we just parsed. subtract start of buffer
   ; to find length
   mov r24, YL
-  ldi r16, low(input_buffer)
+  ldi r16, low(op_buffer)
   sub r24, r16
 
   ; setup pointer to first instruction
@@ -509,8 +514,8 @@ store_instruction:
   st Y+, r3
 
   ; copy #r24 bytes from op buffer
-  ldi XL, low(input_buffer)
-  ldi XH, high(input_buffer)
+  ldi XL, low(op_buffer)
+  ldi XH, high(op_buffer)
   ld r16, X+
   st Y+, r16
   dec r24
