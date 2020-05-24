@@ -800,7 +800,20 @@ parse_goto_done:
 
 
 parse_input:
+
+  ; find a variable name
+  rcall parse_var,
+  brts PC+3
+
+  ldi r_error, error_expected_variable
   ret
+
+  st Y+, r16
+
+  ; XXX multiple
+
+  ret
+
 
 parse_let:
 
@@ -1328,7 +1341,69 @@ op_goto_not_found:
 
 
 op_input:
+
+  ; get the var name
+  ld r16, X+
+  push r16
+  push XL
+  push XH
+
+  ldi ZL, low(text_input_prompt*2)
+  ldi ZH, high(text_input_prompt*2)
+  rcall usart_print_static
+
+  ; read a line
+  rcall usart_line_input
+
+  ; start of buffer
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+
+  rcall skip_whitespace
+
+  ; return if buffer is empty (variable will retain its value)
+  ld r16, X
+  tst r16
+  brne PC+5
+  pop XH
+  pop XL
+  pop r16
   ret
+
+  ; parse the value
+  rcall parse_number
+
+  pop XH
+  pop XL
+  pop r16
+
+  ; did we get anything?
+  brts PC+3
+
+  ldi r_error, error_expected_number
+  ret
+
+  ; overflow?
+  brvc PC+3
+
+  ldi r_error, error_number_out_of_range
+  ret
+
+  ; reset input buffer for number store
+  ldi YL, low(input_buffer)
+  ldi YH, high(input_buffer)
+  movw ZL, YL
+
+  ; buffer the number
+  st Y+, r2
+  st Y+, r3
+
+  ; name in r16, so we can set
+  ldi r17, 0x2
+  rcall set_variable
+
+  ret
+
 
 op_let:
 
@@ -1352,7 +1427,6 @@ op_let:
 
   pop r16
   ldi r17, 0x2
-
   rcall set_variable
 
   ret
@@ -2185,6 +2259,8 @@ text_banner:
   .db "GOOD COMPUTER", 0
 text_prompt:
   .db "BASIC> ", 0
+text_input_prompt:
+  .db "INPUT? ", 0
 
 text_at_line:
   .db " AT LINE ", 0
