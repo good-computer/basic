@@ -17,33 +17,40 @@
 .equ expr_stack     = input_buffer - 0x20
 .equ expr_stack_end = input_buffer - 1
 
-; list of program instructions 0060->
-.equ program_buffer     = SRAM_START
-.equ program_buffer_end = expr_stack - 1
+; gosub stack 0350-035f
+.equ gosub_stack     = expr_stack - 0x10
+.equ gosub_stack_end = expr_stack - 1
 
-; list of variables <-0x37f (reverse direction)
-.equ variable_buffer     = expr_stack - 1
+; list of variables <-0x34f (reverse direction)
+.equ variable_buffer     = gosub_stack - 1
 .equ variable_buffer_end = SRAM_START
 
+; list of program instructions 0060->
+.equ program_buffer     = SRAM_START
+.equ program_buffer_end = gosub_stack - 1
+
+
 ; global registers
-.def r_error  = r25 ; last error code
-.def r_flags  = r11 ; global state flags
-.def r_next_l = r12 ; memory location of next instruction
-.def r_next_h = r13
-.def r_top_l  = r14 ; pointer to top of program (one past end-of-program marker)
-.def r_top_h  = r15
+.def r_error    = r25 ; last error code
+.def r_flags    = r10 ; global state flags
+.def r_gosub_sp = r11 ; low byte of top of gosub stack
+.def r_next_l   = r12 ; memory location of next instruction
+.def r_next_h   = r13
+.def r_top_l    = r14 ; pointer to top of program (one past end-of-program marker)
+.def r_top_h    = r15
 
 ; error codes
-.equ error_no_such_keyword     = 1
-.equ error_number_out_of_range = 2
-.equ error_expected_number     = 3
-.equ error_no_such_line        = 4
-.equ error_out_of_memory       = 5
-.equ error_mismatched_parens   = 6
-.equ error_overflow            = 7
-.equ error_expected_operand    = 8
-.equ error_unterminated_string = 9
-.equ error_expected_variable   = 10
+.equ error_no_such_keyword      = 1
+.equ error_number_out_of_range  = 2
+.equ error_expected_number      = 3
+.equ error_no_such_line         = 4
+.equ error_out_of_memory        = 5
+.equ error_mismatched_parens    = 6
+.equ error_overflow             = 7
+.equ error_expected_operand     = 8
+.equ error_unterminated_string  = 9
+.equ error_expected_variable    = 10
+.equ error_return_without_gosub = 11
 
 
 .cseg
@@ -124,6 +131,10 @@ reset:
   ldi XH, high(variable_buffer)
   clr r16
   st X, r16
+
+  ; clear gosub stack
+  ldi r16, low(gosub_stack)
+  mov r_gosub_sp, r16
 
   ; set top pointer just past the zero-length instruction
   movw r_top_l, XL
@@ -279,6 +290,7 @@ error_lookup_table:
   .dw text_error_expected_operand*2
   .dw text_error_unterminated_string*2
   .dw text_error_expected_variable*2
+  .dw text_error_return_without_gosub*2
 
 
 ; move X forward until there's no whitespace under it
@@ -708,7 +720,7 @@ keyword_parse_table:
   rjmp parse_goto   ; 0x03 GOTO expression
   rjmp parse_input  ; 0x04 INPUT var-list
   rjmp parse_let    ; 0x05 LET var = expression
-  rjmp parse_gosub  ; 0x06 GOSUB expression
+  rjmp parse_goto   ; 0x06 GOSUB expression
   ret               ; 0x07 RETURN
   ret               ; 0x08 CLEAR
   ret               ; 0x09 LIST
@@ -817,11 +829,6 @@ parse_let:
   pop r3
   pop r2
 
-  ret
-
-
-
-parse_gosub:
   ret
 
 
@@ -1346,11 +1353,57 @@ op_let:
 
   ret
 
+
 op_gosub:
+
+  ; make sure there's room on the gosub stack
+  mov ZL, r_gosub_sp
+  cpi ZL, low(gosub_stack_end+1)
+  brne PC+3
+
+  ldi r_error, error_out_of_memory
   ret
 
-op_return:
+  ; stack the next line pointer
+  ldi ZH, high(gosub_stack)
+  st Z+, r_next_l
+  st Z+, r_next_h
+
+  ; do a normal goto, which will advance r_next_l
+  rcall op_goto
+
+  ; see if goto failed
+  tst r_error
+  brne PC+3
+
+  ; success, advance the stack pointer
+  ldi r16, 2
+  add r_gosub_sp, r16
+
   ret
+
+
+op_return:
+
+  ; make sure there's something on the gosub stack
+  mov ZL, r_gosub_sp
+  cpi ZL, low(gosub_stack)
+  brne PC+3
+
+  ldi r_error, error_return_without_gosub
+  ret
+
+  ; pop the next line pointer
+  ldi ZH, high(gosub_stack);
+  ld r_next_h, -Z
+  ld r_next_l, -Z
+
+  ; save the new stack pointer back
+  mov r_gosub_sp, ZL
+
+  ret
+
+
 
 op_clear:
   ret
@@ -1390,6 +1443,10 @@ op_run:
   ldi XH, high(variable_buffer)
   clr r16
   st X, r16
+
+  ; clear gosub stack
+  ldi r16, low(gosub_stack)
+  mov r_gosub_sp, r16
 
   rjmp execute_program
 
@@ -2142,3 +2199,5 @@ text_error_unterminated_string:
   .db "UNTERMINATED STRING", 0
 text_error_expected_variable:
   .db "EXPECTED VARIABLE", 0
+text_error_return_without_gosub:
+  .db "RETURN WITHOUT GOSUB", 0
