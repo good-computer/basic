@@ -2129,6 +2129,10 @@ replace_variable:
 
   ; same space, so back Y up to the length, then store here
   adiw YL, 1
+
+  ; reusing the space
+  clt
+
   rjmp store_variable
 
 adjust_variable_space:
