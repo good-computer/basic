@@ -1148,6 +1148,10 @@ execute_program:
 
 execute_mainloop:
 
+  ; if next instruction is null, exit
+  or r_next_l, r_next_h
+  breq execute_done
+
   ; setup to read line
   movw XL, r_next_l
 
@@ -1450,9 +1454,15 @@ op_run:
 
   rjmp execute_program
 
+
 op_end:
-  rjmp blink_forever
+
+  ; clear next instruction
+  clr r16
+  mov r_next_l, r16
+  mov r_next_h, r16
   ret
+
 
 op_on:
   sbi PORTB, PB1
