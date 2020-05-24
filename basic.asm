@@ -26,11 +26,12 @@
 .equ variable_buffer_end = SRAM_START
 
 ; global registers
-.def r_error  = r21 ; last error code
-.def r_next_l = r22 ; memory location of next instruction
-.def r_next_h = r23
-.def r_top_l  = r24 ; pointer to top of program (one past end-of-program marker)
-.def r_top_h  = r25
+.def r_error  = r25 ; last error code
+.def r_flags  = r11 ; global state flags
+.def r_next_l = r12 ; memory location of next instruction
+.def r_next_h = r13
+.def r_top_l  = r14 ; pointer to top of program (one past end-of-program marker)
+.def r_top_h  = r15
 
 ; error codes
 .equ error_no_such_keyword     = 1
@@ -319,8 +320,8 @@ handle_line_input:
   ret
 
   ; save T flag so we can test immediate mode later
-  clr r15
-  bld r15, 0
+  clr r_flags
+  bld r_flags, 0
 
   ; parse the line back into the input buffer (as op buffer)
   ldi YL, low(input_buffer)
@@ -336,7 +337,7 @@ handle_line_input:
   ret
 
   ; if we have a line number, store it
-  tst r15
+  tst r_flags
   brne find_instruction_location
 
   ; no line number, this is immediate mode and we can just execute it
@@ -1134,8 +1135,9 @@ execute_program:
   clr r_error
 
   ; set next line pointer to start of program buffer
-  ldi r_next_l, low(program_buffer)
-  ldi r_next_h, high(program_buffer)
+  ldi r16, low(program_buffer)
+  ldi r17, high(program_buffer)
+  movw r_next_l, r16
 
 execute_mainloop:
 
