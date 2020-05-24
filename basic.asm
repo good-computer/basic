@@ -748,9 +748,11 @@ parse_print:
   ; check for end of input, no expression is valid
   ld r16, X
   tst r16
-  brne PC+2
+  brne PC+4
 
-  ; nothing to parse, get out of here
+  ; nothing to parse, record null and eject
+  clr r16
+  st Y+, r16
   ret
 
   ; see a quote, start of string!
@@ -1354,8 +1356,14 @@ op_table:
 
 op_print:
 
-  ; check for string first
+  ; starter checks
   ld r16, X
+
+  ; nothing to print? newline only thanks
+  tst r16
+  breq print_newline
+
+  ; check for string first
   cpi r16, '"'
   brne print_expr
 
@@ -1388,6 +1396,7 @@ print_expr:
   ldi ZH, high(input_buffer)
   rcall usart_print
 
+print_newline:
   ldi ZL, low(text_newline*2)
   ldi ZH, high(text_newline*2)
   rjmp usart_print_static
