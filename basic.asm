@@ -56,6 +56,8 @@
 .equ error_unterminated_string  = 9
 .equ error_expected_variable    = 10
 .equ error_return_without_gosub = 11
+.equ error_if_without_then      = 12
+.equ error_expected_comparator  = 13
 
 
 .cseg
@@ -296,6 +298,8 @@ error_lookup_table:
   .dw text_error_unterminated_string*2
   .dw text_error_expected_variable*2
   .dw text_error_return_without_gosub*2
+  .dw text_error_if_without_then*2
+  .dw text_error_expected_comparator*2
 
 
 ; move X forward until there's no whitespace under it
@@ -774,7 +778,105 @@ parse_print_done:
 
 
 parse_if:
+
+  rcall skip_whitespace
+
+  push r2
+  push r3
+
+  rcall parse_expression
+
+  tst r_error
+  brne parse_if_done
+
+  rcall skip_whitespace
+
+  ; =  0x01
+  ; <  0x02
+  ; <= 0x04
+  ; <> 0x08
+  ; >  0x10
+  ; >= 0x20
+
+  ld r16, X+
+  cpi r16, '='
+  breq comparator_equal
+  cpi r16, '<'
+  breq comparator_left
+  cpi r16, '>'
+  breq comparator_right
+
+comparator_unknown:
+  ldi r_error, error_expected_comparator
+  rjmp parse_if_done
+
+comparator_left:
+  ld r16, X+
+  cpi r16, '='
+  brne PC+3
+  ldi r16, 0x04
+  rjmp comparator_store
+  cpi r16, '>'
+  brne PC+3
+  ldi r16, 0x08
+  rjmp comparator_store
+  sbiw XL, 1
+  ldi r16, 0x02
+  rjmp comparator_store
+
+comparator_right:
+  ld r16, X+
+  cpi r16, '='
+  brne PC+3
+  ldi r16, 0x20
+  rjmp comparator_store
+  sbiw XL, 1
+  ldi r16, 0x10
+  rjmp comparator_store
+
+comparator_equal:
+  ldi r16, 0x01
+comparator_store:
+  st Y+, r16
+
+  rcall skip_whitespace
+
+  rcall parse_expression
+
+  tst r_error
+  brne parse_if_done
+
+  rcall skip_whitespace
+
+  ; check for THEN, sigh
+  ldi ZL, low(text_then*2)
+  ldi ZH, high(text_then*2)
+  lpm r16, Z+
+  tst r16
+  breq PC+5
+  ld r17, X+
+  cp r16, r17
+  breq PC-5
+  rjmp parse_if_without_then
+
+  rcall skip_whitespace
+
+  rcall parse_statement
+
+  rjmp parse_if_done
+
+text_then:
+  .db "THEN", 0
+
+parse_if_without_then:
+  ldi r_error, error_if_without_then
+
+parse_if_done:
+  pop r3
+  pop r2
+
   ret
+
 
 parse_goto:
   push r2
@@ -1292,7 +1394,115 @@ print_expr:
 
 
 op_if:
+
+  ; first expression
+  rcall eval_expression
+  tst r_error
+  breq PC+2
   ret
+
+  ; set them aside
+  push r16
+  push r17
+
+  ; operator
+  ld r16, X+
+  push r16
+
+  ; second expression
+  rcall eval_expression
+
+  ; get first expr and operator back
+  pop r20
+  pop r19
+  pop r18
+
+  ; second eval error check
+  tst r_error
+  breq PC+2
+  ret
+
+  ; DEBUG dump operands and comparators
+;  movw r6, r16
+;
+;  mov r16, r18
+;  rcall usart_tx_byte_hex
+;  mov r16, r19
+;  rcall usart_tx_byte_hex
+;
+;  ldi r16, ' '
+;  rcall usart_tx_byte
+;
+;  mov r16, r20
+;  rcall usart_tx_byte_hex
+;
+;  ldi r16, ' '
+;  rcall usart_tx_byte
+;
+;  mov r16, r6
+;  rcall usart_tx_byte_hex
+;  mov r16, r7
+;  rcall usart_tx_byte_hex
+;
+;  ldi r16, ' '
+;  rcall usart_tx_byte
+;
+;  movw r16, r6
+;
+;  ldi r16, 0x41
+;  add r16, r6
+;  rcall usart_tx_byte
+;  ldi r16, 0x41
+;  add r16, r7
+;  rcall usart_tx_byte
+;  ldi r16, 0x41
+;  add r16, r18
+;  rcall usart_tx_byte
+;  ldi r16, 0x41
+;  add r16, r19
+;  rcall usart_tx_byte
+;
+;  ldi r16, ' '
+;  rcall usart_tx_byte
+;
+;  movw r16, r6
+  ; END DEBUG
+
+  ; now do r18:r19 [r20 compop] r16:r17
+  cp r18, r16
+  cpc r19, r17
+  breq comp_eq
+  brlt comp_lt
+
+  ; =  0x01
+  ; <  0x02
+  ; <= 0x04
+  ; <> 0x08
+  ; >  0x10
+  ; >= 0x20
+
+comp_gt:
+  ; greater than: matching ops 0x08 <> | 0x10 > | 0x20 >=
+  andi r20, 0x08|0x10|0x20
+  brne comp_match
+  ret
+
+comp_eq:
+  ; equal: matching ops 0x01 = | 0x04 <= | 0x20 >=
+  andi r20, 0x01|0x04|0x20
+  brne comp_match
+  ret
+
+comp_lt:
+  ; less than: matching ops 0x02 < | 0x04 <= | 0x08 <>
+  andi r20, 0x02|0x04|0x08
+  brne comp_match
+  ret
+
+comp_match:
+  ; matched! now we can execute the statement
+  rjmp execute_statement
+
 
 op_goto:
   ; target line
@@ -2292,3 +2502,7 @@ text_error_expected_variable:
   .db "EXPECTED VARIABLE", 0
 text_error_return_without_gosub:
   .db "RETURN WITHOUT GOSUB", 0
+text_error_if_without_then:
+  .db "IF WITHOUT THEN", 0
+text_error_expected_comparator:
+  .db "EXPECTED COMPARATOR", 0
