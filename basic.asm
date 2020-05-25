@@ -125,26 +125,8 @@ reset:
   brlo PC-4
 
 
-  ; XXX this is CLEAR (NEW), I guess
-
-  ; make first instruction zero-length, truncating the entire program
-  ldi XL, low(program_buffer)
-  ldi XH, high(program_buffer)
-  clr r16
-  st X, r16
-
-  ; clear variable space
-  ldi XL, low(variable_buffer)
-  ldi XH, high(variable_buffer)
-  clr r16
-  st X, r16
-
-  ; clear gosub stack
-  ldi r16, low(gosub_stack)
-  mov r_gosub_sp, r16
-
-  ; set top pointer just past the zero-length instruction
-  movw r_top_l, XL
+  ; setup
+  rcall op_new
 
 
 main:
@@ -382,11 +364,7 @@ handle_line_input:
 find_instruction_location:
   ; we have a line number, so we need to add it to the program
 
-  ; clear variable space
-  ldi XL, low(variable_buffer)
-  ldi XH, high(variable_buffer)
-  clr r16
-  st X, r16
+  rcall op_clear
 
   ; Y currently pointing at end of op we just parsed. subtract start of buffer
   ; to find length
@@ -766,23 +744,24 @@ keyword_end:
 
 
 keyword_table:
-  .db "PRINT",  0x1, \
-      "IF",     0x2, \
-      "GOTO",   0x3, \
-      "INPUT",  0x4, \
-      "LET",    0x5, \
-      "GOSUB",  0x6, \
-      "RETURN", 0x7, \
-      "CLEAR",  0x8, \
-      "LIST",   0x9, \
-      "RUN",    0xa, \
-      "END",    0xb, \
-                     \
-      "ON",     0xc, \
-      "OFF",    0xd, \
-      "SLEEP",  0xe, \
-      "RESET",  0xf, \
-                     \
+  .db "PRINT",  0x01, \
+      "IF",     0x02, \
+      "GOTO",   0x03, \
+      "INPUT",  0x04, \
+      "LET",    0x05, \
+      "GOSUB",  0x06, \
+      "RETURN", 0x07, \
+      "NEW",    0x08, \
+      "CLEAR",  0x09, \
+      "LIST",   0x0a, \
+      "RUN",    0x0b, \
+      "END",    0x0c, \
+                      \
+      "ON",     0x0d, \
+      "OFF",    0x0e, \
+      "SLEEP",  0x0f, \
+      "RESET",  0x10, \
+                      \
       0
 
 keyword_parse_table:
@@ -794,14 +773,15 @@ keyword_parse_table:
   rjmp parse_let    ; 0x05 LET var = expression
   rjmp parse_goto   ; 0x06 GOSUB expression
   ret               ; 0x07 RETURN
-  ret               ; 0x08 CLEAR
-  ret               ; 0x09 LIST
-  ret               ; 0x0a RUN
-  ret               ; 0x0b END
-  ret               ; 0x0c [ON]
-  ret               ; 0x0d [OFF]
-  ret               ; 0x0e [SLEEP]
-  ret               ; 0x0f [RESET]
+  ret               ; 0x08 NEW
+  ret               ; 0x09 CLEAR
+  ret               ; 0x0a LIST
+  ret               ; 0x0b RUN
+  ret               ; 0x0c END
+  ret               ; 0x0d [ON]
+  ret               ; 0x0e [OFF]
+  ret               ; 0x0f [SLEEP]
+  ret               ; 0x10 [RESET]
 
 
 parse_print:
@@ -1424,14 +1404,15 @@ op_table:
   rjmp op_let     ; 0x05 LET var = expression
   rjmp op_gosub   ; 0x06 GOSUB expression
   rjmp op_return  ; 0x07 RETURN
-  rjmp op_clear   ; 0x08 CLEAR
-  rjmp op_list    ; 0x09 LIST
-  rjmp op_run     ; 0x0a RUN
-  rjmp op_end     ; 0x0b END
-  rjmp op_on      ; 0x0c [ON]
-  rjmp op_off     ; 0x0d [OFF]
-  rjmp op_sleep   ; 0x0e [SLEEP]
-  rjmp op_reset   ; 0x0f [RESET]
+  rjmp op_new     ; 0x08 NEW
+  rjmp op_clear   ; 0x09 CLEAR
+  rjmp op_list    ; 0x0a LIST
+  rjmp op_run     ; 0x0b RUN
+  rjmp op_end     ; 0x0c END
+  rjmp op_on      ; 0x0d [ON]
+  rjmp op_off     ; 0x0e [OFF]
+  rjmp op_sleep   ; 0x0f [SLEEP]
+  rjmp op_reset   ; 0x10 [RESET]
 
 op_print:
 
@@ -1841,9 +1822,32 @@ op_return:
   ret
 
 
+op_new:
+  ; make first instruction zero-length, truncating the entire program
+  ldi XL, low(program_buffer)
+  ldi XH, high(program_buffer)
+  clr r16
+  st X, r16
+
+  ; set top pointer just past the zero-length instruction
+  movw r_top_l, XL
+
+  ; fall through
+
 
 op_clear:
+  ; clear gosub stack
+  ldi r16, low(gosub_stack)
+  mov r_gosub_sp, r16
+
+  ; clear variable space
+  ldi XL, low(variable_buffer)
+  ldi XH, high(variable_buffer)
+  clr r16
+  st X, r16
+
   ret
+
 
 op_list:
 
@@ -1875,15 +1879,7 @@ op_list_next:
 
 
 op_run:
-  ; clear variable space
-  ldi XL, low(variable_buffer)
-  ldi XH, high(variable_buffer)
-  clr r16
-  st X, r16
-
-  ; clear gosub stack
-  ldi r16, low(gosub_stack)
-  mov r_gosub_sp, r16
+  rcall op_clear
 
   rjmp execute_program
 
