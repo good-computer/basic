@@ -884,24 +884,8 @@ parse_goto:
   push r2
   push r3
 
-  ; XXX expression
-  rcall parse_number
+  rcall parse_expression
 
-  ; overflow?
-  brvc PC+3
-  ldi r_error, error_number_out_of_range
-  rjmp parse_goto_done
-
-  ; was there even a number?
-  brts PC+3
-  ldi r_error, error_expected_number
-  rjmp parse_goto_done
-
-  ; store it
-  st Y+, r2
-  st Y+, r3
-
-parse_goto_done:
   pop r3
   pop r2
 
@@ -1514,9 +1498,14 @@ comp_match:
 
 
 op_goto:
+
+  rcall eval_expression
+  tst r_error
+  breq PC+2
+  ret
+
   ; target line
-  ld r4, X+
-  ld r5, X+
+  movw r4, r16
 
   ; get pointer to start of program buffer
   ldi r18, low(program_buffer)
