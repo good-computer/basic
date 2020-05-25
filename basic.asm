@@ -412,6 +412,9 @@ consider_instruction:
   ld r17, Y+
   ld r18, Y+
 
+  ; move Y back to start of instruction
+  sbiw YL, 3
+
   ; compare the line number we're looking with the one we just parsed
   cp r2, r17
   cpc r3, r18
@@ -420,11 +423,12 @@ consider_instruction:
   breq replace_instruction
 
   ; if its lower than us, then we belong here and need to push forward
-  brlo open_instruction
+  brlo insert_instruction
 
   ; its higher than us, so we need to move along and try the next one
 
-  ; Y currently point at the oplist, which is #r16 long, so skip past it
+  ; move Y to next slot position, #r16 long (+3)
+  adiw YL, 3
   add YL, r16
   brcc consider_instruction
   inc YH
@@ -452,22 +456,38 @@ append_instruction:
 
   rjmp store_instruction
 
+insert_instruction:
+
+  ; want room for the whole lot, with room for housekeeping
+  mov r23, r24
+  ldi r22, 3
+  add r23, r22
+  rjmp open_instruction_slot
+
 replace_instruction:
 
-  ldi r16, 'R'
-  rcall usart_tx_byte
-  rjmp blink_forever
+  ; #r16 has current length. #r24 has what we need. how much do we need to grow/shrink by?
+  mov r23, r24
+  sub r23, r16
 
-open_instruction:
+  ; if its same size, go straight to store
+  breq store_instruction
 
-  ; make a gap of #r24 + 3 bytes here
+  ; grow? just a smaller open
+  brsh open_instruction_slot
+
+  ; shrink
+  rjmp close_instruction_slot
+
+open_instruction_slot:
+
+  ; make a gap of #r23 bytes here
 
   ; get pointer to top of memory
   movw XL, r_top_l
 
   ; add room for the instruction, making X our move target
-  adiw XL, 3
-  add XL, r24
+  add XL, r23
   brcc PC+2
   inc XH
 
@@ -488,12 +508,6 @@ open_instruction:
   ; new top is in X
   movw r_top_l, XL
 
-  ; Y currently pointing at the oplist of the instruction we're inserting
-  ; before. roll it back a bit
-  subi YL, 3
-  brcc PC+2
-  dec YH
-
   ; now copy from Z -> X, rolling down until Z = Y
   ld r4, -Z
   st -X, r4
@@ -504,7 +518,35 @@ open_instruction:
   ; no end-of-program instruction
   clt
 
-  ; fall through to store_instruction
+  rjmp store_instruction
+
+close_instruction_slot:
+
+  ; pull back -#r23 bytes here
+
+  ; get target into X
+  movw XL, YL
+
+  ; and source, -#r23 ahead
+  movw ZL, YL
+  sub ZL, r23 ; sub, because its negative and we want to go forward
+  brcs PC+2
+  dec ZH
+
+  ; now copy from Z -> X, rolling up until Z = r_top
+  ld r4, Z+
+  st X+, r4
+  cp ZL, r_top_l
+  cpc ZH, r_top_h
+  brne PC-4
+
+  ; new top is in X
+  movw r_top_l, XL
+
+  ; no end-of-program instruction
+  clt
+
+  ; fall through to store instruction
 
 store_instruction:
 
