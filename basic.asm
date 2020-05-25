@@ -915,15 +915,27 @@ parse_goto:
 parse_input:
 
   ; find a variable name
-  rcall parse_var,
+  rcall parse_var
   brts PC+3
 
   ldi r_error, error_expected_variable
   ret
 
+  ; store its name
   st Y+, r16
 
-  ; XXX multiple
+  ; comma?
+  ld r16, X
+  cpi r16, ','
+  brne PC+3
+
+  ; advance and try for another
+  adiw XL, 1
+  rjmp parse_input
+
+  ; end of variables marker
+  clr r16
+  st Y+, r16
 
   ret
 
@@ -1616,6 +1628,12 @@ op_input:
 
   ; get the var name
   ld r16, X+
+
+  ; done all vars?
+  tst r16
+  brne PC+2
+  ret
+
   push r16
   push XL
   push XH
@@ -1672,9 +1690,15 @@ op_input:
 
   ; name in r16, so we can set
   ldi r17, 0x2
-  rcall set_variable
 
-  ret
+  push XH
+  push XL
+  rcall set_variable
+  pop XL
+  pop XH
+
+  ; try next
+  rjmp op_input
 
 
 op_let:
