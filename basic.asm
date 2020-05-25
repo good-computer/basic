@@ -348,6 +348,16 @@ handle_line_input:
   ldi YL, low(op_buffer)
   ldi YH, high(op_buffer)
 
+  rcall skip_whitespace
+
+  ; end of buffer check. if its empty, then it has to be because we got a line
+  ; number and nothing else, otherwise we'd hit the trap above. proceed
+  ; immediately to "store"
+  ld r16, X
+  tst r16
+  breq find_instruction_location
+
+  ; stuff! parse it
   rcall parse_statement
 
   ; XXX skip remaining whitespace and look for end of buffer, error if not
@@ -377,8 +387,6 @@ find_instruction_location:
   ldi XH, high(variable_buffer)
   clr r16
   st X, r16
-
-  ; XXX if at end of buffer, delete this line
 
   ; Y currently pointing at end of op we just parsed. subtract start of buffer
   ; to find length
@@ -524,6 +532,15 @@ close_instruction_slot:
 
   ; pull back -#r23 bytes here
 
+  ; if we're replacing it with nothing, then need to pull back 3 more
+  ; housekeeping bytes
+  tst r24
+  brne PC+3
+
+  ; sub offset
+  ldi r22, 3
+  sub r23, r22
+
   ; get target into X
   movw XL, YL
 
@@ -542,6 +559,12 @@ close_instruction_slot:
 
   ; new top is in X
   movw r_top_l, XL
+
+  ; just closed a gap and nothing to replace it with was just deleting a line,
+  ; and we're done
+  tst r24
+  brne PC+2
+  ret
 
   ; no end-of-program instruction
   clt
@@ -681,8 +704,6 @@ parse_number_overflow:
 ; inputs:
 ;   X: pointer to statement text, will be moved
 parse_statement:
-
-  rcall skip_whitespace
 
   ; take copy of pointer to start of statement, so we can reset it
   movw r4, XL
