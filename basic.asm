@@ -757,26 +757,46 @@ parse_print:
 
   ; see a quote, start of string!
   cpi r16, '"'
-  brne PC+2
+  brne PC+3
 
-  rjmp parse_string
+  rcall parse_string
+  rjmp parse_print_sep
 
+  ; not a string, so an expression
   push r2
   push r3
-
   rcall parse_expression
-
-  ; bail on parse error
-  tst r_error
-  brne parse_print_done
-
-  ; XXX expr-list
-
-parse_print_done:
   pop r3
   pop r2
 
+parse_print_sep:
+
+  ; bail on parse error
+  tst r_error
+  breq PC+2
   ret
+
+  rcall skip_whitespace
+
+  ; look for separators
+  ld r16, X
+
+  cpi r16, ';'
+  breq PC+4
+  cpi r16, ','
+  breq PC+2
+
+  ; no separator, loop for next expression/string/nothing
+  rjmp parse_print
+
+  ; found one, take it
+  adiw XL, 1
+
+  ; store it
+  st Y+, r16
+
+  ; and go again
+  rjmp parse_print
 
 
 parse_if:
@@ -1340,34 +1360,72 @@ op_table:
 
 op_print:
 
-  ; starter checks
-  ld r16, X
+  ; T flag says to add a newline at the end
+  set
+
+print_next:
+
+  ; what's next?
+  ld r16, X+
 
   ; nothing to print? newline only thanks
   tst r16
-  breq print_newline
+  brne print_sep
+
+  ; do we want a newline?
+  brts PC+2
+  ret
+
+  ; yep
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rjmp usart_print_static
+
+print_sep:
+  ; comma?
+  cpi r16, ','
+  brne PC+4
+
+  ; emit a tab
+  ldi r16, 0x9
+  rcall usart_tx_byte
+  rjmp print_next
+
+  ; semicolon?
+  cpi r16, ';'
+  brne PC+3
+
+  ; disable newline
+  clt
+  rjmp print_next
 
   ; check for string first
   cpi r16, '"'
   brne print_expr
 
-  ; advance past double-quote
-  adiw XL, 1
-
+  ; print it!
   movw ZL, XL
   rcall usart_print
 
-  ldi ZL, low(text_newline*2)
-  ldi ZH, high(text_newline*2)
-  rjmp usart_print_static
+  ; after print, Z lands just after the string, so bring X back from it, so bring X back from it
+  movw XL, ZL
+
+  ; want new line again
+  set
+  rjmp print_next
 
 print_expr:
+
+  ; back up to expression start
+  sbiw XL, 1
+
   rcall eval_expression
 
   tst r_error
   breq PC+2
   ret
 
+  ; format number to start of input buffer
   push XL
   push XH
   ldi XL, low(input_buffer)
@@ -1376,14 +1434,15 @@ print_expr:
   pop XH
   pop XL
 
+  ; and print it
   ldi ZL, low(input_buffer)
   ldi ZH, high(input_buffer)
   rcall usart_print
 
-print_newline:
-  ldi ZL, low(text_newline*2)
-  ldi ZH, high(text_newline*2)
-  rjmp usart_print_static
+  ; newlines please!
+  set
+  rjmp print_next
+
 
 
 op_if:
