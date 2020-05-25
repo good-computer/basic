@@ -1756,9 +1756,8 @@ op_run:
 op_end:
 
   ; clear next instruction
-  clr r16
-  mov r_next_l, r16
-  mov r_next_h, r16
+  clr r_next_l
+  clr r_next_h
   ret
 
 
