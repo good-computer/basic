@@ -45,19 +45,20 @@
 .def r_top_h    = r15
 
 ; error codes
-.equ error_no_such_keyword      = 1
-.equ error_number_out_of_range  = 2
-.equ error_expected_number      = 3
-.equ error_no_such_line         = 4
-.equ error_out_of_memory        = 5
-.equ error_mismatched_parens    = 6
-.equ error_overflow             = 7
-.equ error_expected_operand     = 8
+.equ error_number_out_of_range  = 1
+.equ error_expected_number      = 2
+.equ error_expected_variable    = 3
+.equ error_expected_statement   = 4
+.equ error_expected_comparator  = 5
+.equ error_expected_expression  = 6
+.equ error_expected_operand     = 7
+.equ error_mismatched_parens    = 8
 .equ error_unterminated_string  = 9
-.equ error_expected_variable    = 10
-.equ error_return_without_gosub = 11
-.equ error_if_without_then      = 12
-.equ error_expected_comparator  = 13
+.equ error_return_without_gosub = 10
+.equ error_if_without_then      = 11
+.equ error_out_of_memory        = 12
+.equ error_overflow             = 13
+.equ error_no_such_line         = 14
 
 
 .cseg
@@ -269,19 +270,20 @@ error_newline:
   rjmp usart_print_static
 
 error_lookup_table:
-  .dw text_error_no_such_keyword*2
   .dw text_error_number_out_of_range*2
   .dw text_error_expected_number*2
-  .dw text_error_no_such_line*2
-  .dw text_error_out_of_memory*2
-  .dw text_error_mismatched_parens*2
-  .dw text_error_overflow*2
-  .dw text_error_expected_operand*2
-  .dw text_error_unterminated_string*2
   .dw text_error_expected_variable*2
+  .dw text_error_expected_statement*2
+  .dw text_error_expected_comparator*2
+  .dw text_error_expected_expression*2
+  .dw text_error_expected_operand*2
+  .dw text_error_mismatched_parens*2
+  .dw text_error_unterminated_string*2
   .dw text_error_return_without_gosub*2
   .dw text_error_if_without_then*2
-  .dw text_error_expected_comparator*2
+  .dw text_error_out_of_memory*2
+  .dw text_error_overflow*2
+  .dw text_error_no_such_line*2
 
 
 ; move X forward until there's no whitespace under it
@@ -311,16 +313,20 @@ handle_line_input:
 
   ; parse the line number
   rcall parse_number
-
-  ; overflow?
-  brvs PC+3
+  tst r_error
+  breq PC+2
+  ret
 
   ; negative?
   tst r3
   brpl PC+3
 
+  ; no negative numbers for line numbers sorrt
   ldi r_error, error_number_out_of_range
   ret
+
+  ; copy line number so we can safely trample it in statement parsing
+  movw r8, r2
 
   ; save T flag so we can test immediate mode later
   clr r_flags
@@ -347,6 +353,10 @@ handle_line_input:
   ; bail on parse error
   tst r_error
   breq PC+2
+  ret
+
+  brts PC+3
+  ldi r_error, error_expected_statement
   ret
 
   ; if we have a line number, store it
@@ -402,8 +412,8 @@ consider_instruction:
   sbiw YL, 3
 
   ; compare the line number we're looking with the one we just parsed
-  cp r2, r17
-  cpc r3, r18
+  cp r8, r17
+  cpc r9, r18
 
   ; if its the same number, we're replacing it
   breq replace_instruction
@@ -557,8 +567,8 @@ store_instruction:
   st Y+, r24
 
   ; store line number
-  st Y+, r2
-  st Y+, r3
+  st Y+, r8
+  st Y+, r9
 
   ; copy #r24 bytes from op buffer
   ldi XL, low(op_buffer)
@@ -589,15 +599,13 @@ store_end_of_program:
 ;   r2: low byte of number
 ;   r3: high byte of number
 ;   T:  set if we actually parsed something
-;   V:  set if we overflowed 16 bits
 parse_number:
 
   ; store X in case we need to rewind
   movw r6, XL
 
-  ; clear result flags
+  ; clear result flag
   clt
-  clv
 
   ; accumulator
   clr r2
@@ -671,16 +679,18 @@ digit_valid:
   inc r3
   brpl parse_number_loop
 
-  ; overflowed, restore X, flag and abort
 parse_number_overflow:
-  movw XL, r6
-  sev
+  ; overflowed, abort
+  ldi r_error, error_number_out_of_range
   ret
 
 
-; parse a statment (keyword + args)
+; parse a statement (keyword + args)
 ; inputs:
 ;   X: pointer to statement text, will be moved
+; outputs:
+;   Y: oplist, will be moved
+;   T:  set if we actually parsed something
 parse_statement:
 
   ; take copy of pointer to start of statement, so we can reset it
@@ -720,10 +730,17 @@ keyword_end:
 
   ; but if its zero, we hit the end of the keyword table, so it wasn't found
   tst r17
-  brne PC+3
+  brne PC+4
 
-  ldi r_error, error_no_such_keyword
+  ; reset X
+  movw XL, r4
+
+  ; flag nothing parsed
+  clt
   ret
+
+  ; parsed stuff, tell the caller
+  set
 
   rcall skip_whitespace
 
@@ -765,59 +782,61 @@ keyword_table:
       0
 
 keyword_parse_table:
-  .dw 0             ; 0x00 [reserved]
-  rjmp parse_print  ; 0x01 PRINT expr-list
-  rjmp parse_if     ; 0x02 IF expression relop expression THEN statement
-  rjmp parse_goto   ; 0x03 GOTO expression
-  rjmp parse_input  ; 0x04 INPUT var-list
-  rjmp parse_let    ; 0x05 LET var = expression
-  rjmp parse_goto   ; 0x06 GOSUB expression
-  ret               ; 0x07 RETURN
-  ret               ; 0x08 NEW
-  ret               ; 0x09 CLEAR
-  ret               ; 0x0a LIST
-  ret               ; 0x0b RUN
-  ret               ; 0x0c END
-  ret               ; 0x0d [ON]
-  ret               ; 0x0e [OFF]
-  ret               ; 0x0f [SLEEP]
-  ret               ; 0x10 [RESET]
+  .dw 0                ; 0x00 [reserved]
+  rjmp st_parse_print  ; 0x01 PRINT expr-list
+  rjmp st_parse_if     ; 0x02 IF expression relop expression THEN statement
+  rjmp st_parse_goto   ; 0x03 GOTO expression
+  rjmp st_parse_input  ; 0x04 INPUT var-list
+  rjmp st_parse_let    ; 0x05 LET var = expression
+  rjmp st_parse_goto   ; 0x06 GOSUB expression
+  ret                  ; 0x07 RETURN
+  ret                  ; 0x08 NEW
+  ret                  ; 0x09 CLEAR
+  ret                  ; 0x0a LIST
+  ret                  ; 0x0b RUN
+  ret                  ; 0x0c END
+  ret                  ; 0x0d [ON]
+  ret                  ; 0x0e [OFF]
+  ret                  ; 0x0f [SLEEP]
+  ret                  ; 0x10 [RESET]
 
 
-parse_print:
+st_parse_print:
 
   rcall skip_whitespace
 
   ; check for end of input, no expression is valid
   ld r16, X
   tst r16
-  brne PC+4
+  brne PC+5
 
   ; nothing to parse, record null and eject
   clr r16
   st Y+, r16
+
+  ; parsed stuff
+  set
   ret
 
-  ; see a quote, start of string!
-  cpi r16, '"'
-  brne PC+3
-
+  ; try to parse a string
   rcall parse_string
-  rjmp parse_print_sep
-
-  ; not a string, so an expression
-  push r2
-  push r3
-  rcall parse_expression
-  pop r3
-  pop r2
-
-parse_print_sep:
-
-  ; bail on parse error
   tst r_error
   breq PC+2
   ret
+  brts st_parse_print_sep
+
+  ; not a string, so an expression
+  rcall parse_expression
+  tst r_error
+  breq PC+2
+  ret
+  brts st_parse_print_sep
+
+  ; who knows
+  ldi r_error, error_expected_expression
+  ret
+
+st_parse_print_sep:
 
   rcall skip_whitespace
 
@@ -830,7 +849,7 @@ parse_print_sep:
   breq PC+2
 
   ; no separator, loop for next expression/string/nothing
-  rjmp parse_print
+  rjmp st_parse_print
 
   ; found one, take it
   adiw XL, 1
@@ -839,20 +858,21 @@ parse_print_sep:
   st Y+, r16
 
   ; and go again
-  rjmp parse_print
+  rjmp st_parse_print
 
 
-parse_if:
+st_parse_if:
 
   rcall skip_whitespace
 
-  push r2
-  push r3
-
   rcall parse_expression
-
   tst r_error
-  brne parse_if_done
+  breq PC+2
+  ret
+
+  brts PC+3
+  ldi r_error, error_expected_expression
+  ret
 
   rcall skip_whitespace
 
@@ -873,7 +893,7 @@ parse_if:
 
 comparator_unknown:
   ldi r_error, error_expected_comparator
-  rjmp parse_if_done
+  ret
 
 comparator_left:
   ld r16, X+
@@ -907,9 +927,13 @@ comparator_store:
   rcall skip_whitespace
 
   rcall parse_expression
-
   tst r_error
-  brne parse_if_done
+  breq PC+2
+  ret
+
+  brts PC+3
+  ldi r_error, error_expected_expression
+  ret
 
   rcall skip_whitespace
 
@@ -918,47 +942,45 @@ comparator_store:
   ldi ZH, high(text_then*2)
   lpm r16, Z+
   tst r16
-  breq PC+5
+  breq PC+6
   ld r17, X+
   cp r16, r17
   breq PC-5
-  rjmp parse_if_without_then
+
+  ldi r_error, error_if_without_then
+  ret
 
   rcall skip_whitespace
 
   rcall parse_statement
-
-  rjmp parse_if_done
+  tst r_error
+  breq PC+2
+  ret
+  brts PC+2
+  ldi r_error, error_expected_statement
+  ret
 
 text_then:
   .db "THEN", 0
 
-parse_if_without_then:
-  ldi r_error, error_if_without_then
 
-parse_if_done:
-  pop r3
-  pop r2
-
-  ret
-
-
-parse_goto:
-  push r2
-  push r3
-
+st_parse_goto:
   rcall parse_expression
-
-  pop r3
-  pop r2
-
+  tst r_error
+  breq PC+2
+  ret
+  brts PC+2
+  ldi r_error, error_expected_expression
   ret
 
 
-parse_input:
+st_parse_input:
 
   ; find a variable name
   rcall parse_var
+  tst r_error
+  breq PC+2
+  ret
   brts PC+3
 
   ldi r_error, error_expected_variable
@@ -974,7 +996,7 @@ parse_input:
 
   ; advance and try for another
   adiw XL, 1
-  rjmp parse_input
+  rjmp st_parse_input
 
   ; end of variables marker
   clr r16
@@ -983,10 +1005,13 @@ parse_input:
   ret
 
 
-parse_let:
+st_parse_let:
 
   ; find a variable name
   rcall parse_var
+  tst r_error
+  breq PC+2
+  ret
   brts PC+3
 
   ldi r_error, error_expected_variable
@@ -1004,16 +1029,36 @@ parse_let:
 
   rcall skip_whitespace
 
-  push r2
-  push r3
   rcall parse_expression
-  pop r3
-  pop r2
+  tst r_error
+  breq PC+2
+  ret
+
+  brts PC+2
+  ldi r_error, error_expected_expression
 
   ret
 
 
+; parse a double-quoted string
+; inputs:
+;   X: pointer to double-quoted string
+; outputs:
+;   Y: double-quote marker, then null-terminated string
+;   T: set if we actually parsed something
 parse_string:
+
+  ; confirm its a string
+  ld r16, X
+  cpi r16, '"'
+  breq PC+3
+
+  ; bounce out
+  clt
+  ret
+
+  ; get this started
+  set
 
   ; take the double-quote
   ld r16, X+
@@ -1038,13 +1083,14 @@ string_loop:
   st Y+, r16
   rjmp string_loop
 
-  ; add terminator
+  ; add null terminator
   clr r16
   st Y+, r16
 
   ret
 
 
+; parse an expression into the opbuffer
 parse_expression:
 
   ; prep expression stack pointer at one behind the stack area
@@ -1070,12 +1116,10 @@ expr_next:
   ; operands (numbers, variables) go to the output buffer, with suitable
   ; micro-ops so we know how to resolve them at runtime
 
-  ; a number, try to parse it
+  ; try to parse a number
   rcall parse_number
-
-  ; overflow?
-  brvc PC+3
-  ldi r_error, error_number_out_of_range
+  tst r_error
+  breq PC+2
   ret
 
   ; did we even get a number?
@@ -1098,6 +1142,9 @@ expr_maybe_var:
 
   ; what about a variable?
   rcall parse_var
+  tst r_error
+  breq PC+2
+  ret
 
   ; maybe!
   brtc expr_maybe_left_paren
@@ -1132,6 +1179,17 @@ expr_maybe_left_paren:
 
 expr_not_operand:
 
+  ; needed an operand, but didn't get one
+
+  ; if this was the first operand, that's ok, just means that this isn't an
+  ; expression really. X is already back at the start
+  cpi ZL, low(expr_stack)
+  brsh PC+3
+
+  ; stack empty, so we can just leave
+  clt
+  ret
+
   ; sorry, really needed that thing
   ldi r_error, error_expected_operand
   ret
@@ -1157,11 +1215,14 @@ expr_dump_remaining_opers:
 
   ; check if stack is empty
   cpi ZL, low(expr_stack)
-  brsh PC+4
+  brsh PC+5
 
   ; done! add terminator and get out of here
   clr r16
   st Y+, r16
+
+  ; did it!
+  set
   ret
 
   ; pop
@@ -1711,16 +1772,15 @@ op_input:
   pop XL
   pop r16
 
+  ; number parse error?
+  tst r_error
+  breq PC+2
+  ret
+
   ; did we get anything?
   brts PC+3
 
   ldi r_error, error_expected_number
-  ret
-
-  ; overflow?
-  brvc PC+3
-
-  ldi r_error, error_number_out_of_range
   ret
 
   ; reset input buffer for number store
@@ -2623,29 +2683,31 @@ text_input_prompt:
 text_at_line:
   .db " AT LINE ", 0
 
-text_error_no_such_keyword:
-  .db "NO SUCH KEYWORD", 0
 text_error_number_out_of_range:
   .db "NUMBER OUT OF RANGE", 0
 text_error_expected_number:
   .db "EXPECTED NUMBER", 0
-text_error_no_such_line:
-  .db "NO SUCH LINE", 0
-text_error_out_of_memory:
-  .db "OUT OF MEMORY", 0
-text_error_mismatched_parens:
-  .db "MISMATCHED PARENS", 0
-text_error_overflow:
-  .db "OVERFLOW", 0
-text_error_expected_operand:
-  .db "EXPECTED OPERAND", 0
-text_error_unterminated_string:
-  .db "UNTERMINATED STRING", 0
 text_error_expected_variable:
   .db "EXPECTED VARIABLE", 0
+text_error_expected_statement:
+  .db "EXPECTED STATEMENT", 0
+text_error_expected_comparator:
+  .db "EXPECTED COMPARATOR", 0
+text_error_expected_expression:
+  .db "EXPECTED EXPRESSION", 0
+text_error_expected_operand:
+  .db "EXPECTED OPERAND", 0
+text_error_mismatched_parens:
+  .db "MISMATCHED PARENS", 0
+text_error_unterminated_string:
+  .db "UNTERMINATED STRING", 0
 text_error_return_without_gosub:
   .db "RETURN WITHOUT GOSUB", 0
 text_error_if_without_then:
   .db "IF WITHOUT THEN", 0
-text_error_expected_comparator:
-  .db "EXPECTED COMPARATOR", 0
+text_error_out_of_memory:
+  .db "OUT OF MEMORY", 0
+text_error_overflow:
+  .db "OVERFLOW", 0
+text_error_no_such_line:
+  .db "NO SUCH LINE", 0
