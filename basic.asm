@@ -346,7 +346,7 @@ handle_line_input:
   breq find_instruction_location
 
   ; stuff! parse it
-  rcall parse_statement
+  rcall parse_statement_list
 
   ; XXX skip remaining whitespace and look for end of buffer, error if not
 
@@ -367,9 +367,7 @@ handle_line_input:
   ldi XL, low(op_buffer)
   ldi XH, high(op_buffer)
 
-  rcall execute_statement
-
-  ret
+  rjmp execute_statement
 
 find_instruction_location:
   ; we have a line number, so we need to add it to the program
@@ -685,6 +683,71 @@ parse_number_overflow:
   ret
 
 
+parse_statement_list:
+
+  ; count number of statements parse
+  clr r16
+  push r16
+
+statement_next:
+  ; try to parse one
+  rcall parse_statement
+  tst r_error
+  breq PC+3
+  pop r16
+  ret
+
+  ; did we get one?
+  brts statement_got
+
+  ; no, set T if we got any at all
+statement_last:
+  clt
+  pop r16
+  tst r16
+  breq PC+2
+  set
+  ret
+
+statement_got:
+  ; got one, bump the count
+  pop r16
+  inc r16
+  push r16
+
+  rcall skip_whitespace
+
+  ; following byte
+  ld r16, X
+
+  ; end of input, leave it there and get out of here
+  tst r16
+  brne PC+3
+
+  ; store the zero as an end-of-statement marker
+  st Y+, r16
+  rjmp statement_last
+
+  ; statement separator
+  cpi r16, ':'
+  breq PC+4
+
+  ; something weird, bail
+  pop r16
+  ldi r_error, error_expected_statement
+  ret
+
+  ; take it
+  adiw XL, 1
+
+  ; store it
+  st Y+, r16
+
+  ; go again
+  rcall skip_whitespace
+  rjmp statement_next
+
+
 ; parse a statement (keyword + args)
 ; inputs:
 ;   X: pointer to statement text, will be moved
@@ -952,7 +1015,7 @@ comparator_store:
 
   rcall skip_whitespace
 
-  rcall parse_statement
+  rcall parse_statement_list
   tst r_error
   breq PC+2
   ret
@@ -1446,12 +1509,29 @@ execute_statement:
   ld r16, X+
 
   ; add op table location
-  clr r17
   add ZL, r16
-  adc ZH, r17
+  brcc PC+2
+  inc ZH
 
-  ; and jump to the handler. it will return to our caller
-  ijmp
+  ; and jump to the handler
+  icall
+
+  ; error check and abort
+  tst r_error
+  breq PC+2
+  ret
+
+  ; look for statement terminator
+  ld r16, X+
+
+  ; null, we're done
+  tst r16
+  brne PC+2
+  ret
+
+  ; anything else (':'), there's another statement!
+  rjmp execute_statement
+
 
 ; op table. opcodes are just indexes into this table, which then point off
 ; to the routine that executes that opcode
