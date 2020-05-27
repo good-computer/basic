@@ -870,9 +870,18 @@ st_parse_print:
 
   ; check for end of input, no expression is valid
   ld r16, X
-  tst r16
-  brne PC+5
 
+  tst r16
+  breq st_parse_print_done
+
+  ; tread unadorned colon as end of input as well. need this because we can't
+  ; rely on their being an explicit separator between expressions, so we can't
+  ; reliably know when to expect end-of-statenent in the face of a valid
+  ; (weird) statement like 'PRINT "A" "B"'
+  cpi r16, ':'
+  brne st_parse_print_try
+
+st_parse_print_done:
   ; nothing to parse, record null and eject
   clr r16
   st Y+, r16
@@ -881,6 +890,7 @@ st_parse_print:
   set
   ret
 
+st_parse_print_try:
   ; try to parse a string
   rcall parse_string
   tst r_error
@@ -1567,6 +1577,10 @@ print_next:
 
   ; nothing to print? newline only thanks
   tst r16
+  breq PC+3
+
+  ; colon also means nothing, same dumb reasonsing as in st_parse_print
+  cpi r16, ':'
   brne print_sep
 
   ; do we want a newline?
@@ -1604,7 +1618,7 @@ print_sep:
   movw ZL, XL
   rcall usart_print
 
-  ; after print, Z lands just after the string, so bring X back from it, so bring X back from it
+  ; after print, Z lands just after the string, so bring X back from it
   movw XL, ZL
 
   ; want new line again
