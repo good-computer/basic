@@ -1983,6 +1983,10 @@ op_new:
   ; set top pointer just past the zero-length instruction
   movw r_top_l, XL
 
+  ; clear next instruction
+  mov r_next_l, r16
+  mov r_next_h, r16
+
   ; fall through
 
 
