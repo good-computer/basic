@@ -52,13 +52,14 @@
 .equ error_expected_comparator  = 5
 .equ error_expected_expression  = 6
 .equ error_expected_operand     = 7
-.equ error_mismatched_parens    = 8
-.equ error_unterminated_string  = 9
-.equ error_return_without_gosub = 10
-.equ error_if_without_then      = 11
-.equ error_out_of_memory        = 12
-.equ error_overflow             = 13
-.equ error_no_such_line         = 14
+.equ error_expected_string      = 8
+.equ error_mismatched_parens    = 9
+.equ error_unterminated_string  = 10
+.equ error_return_without_gosub = 11
+.equ error_if_without_then      = 12
+.equ error_out_of_memory        = 13
+.equ error_overflow             = 14
+.equ error_no_such_line         = 15
 
 
 .cseg
@@ -277,6 +278,7 @@ error_lookup_table:
   .dw text_error_expected_comparator*2
   .dw text_error_expected_expression*2
   .dw text_error_expected_operand*2
+  .dw text_error_expected_string*2
   .dw text_error_mismatched_parens*2
   .dw text_error_unterminated_string*2
   .dw text_error_return_without_gosub*2
@@ -1091,6 +1093,7 @@ st_parse_let:
   ret
 
   st Y+, r16
+  push r16
 
   rcall skip_whitespace
 
@@ -1102,6 +1105,21 @@ st_parse_let:
 
   rcall skip_whitespace
 
+  pop r16
+  andi r16, 0x80
+  breq st_parse_let_expr
+
+  rcall parse_string
+  tst r_error
+  breq PC+2
+  ret
+
+  brts PC+2
+  ldi r_error, error_expected_string
+
+  ret
+
+st_parse_let_expr:
   rcall parse_expression
   tst r_error
   breq PC+2
@@ -1441,13 +1459,30 @@ parse_var:
 
   ld r16, X
   cpi r16, 'A'
-  brlo PC+5
-  cpi r16, 'Z'+1
-  brsh PC+3
+  brsh PC+2
+  ret
 
-  ; found it, take it and flag it
+  cpi r16, 'Z'+1
+  brlo PC+2
+  ret
+
+  ; found it, take it
   adiw XL, 1
+
+  ; flag that we got something
   set
+
+  ; look for $ (string varname)
+  ld r17, X
+  cpi r17, '$'
+  breq PC+2
+  ret
+
+  ; found it, take it
+  adiw XL, 1
+
+  ; set top bit
+  ori r16, 0x80
 
   ret
 
@@ -1906,6 +1941,32 @@ op_let:
   ld r16, X+
   push r16
 
+  ; determine type
+  andi r16, 0x80
+  breq op_let_expr
+
+  ; scan and count length
+  clr r17
+  mov YL, XL
+  inc r17
+  ld r16, Y+
+  tst r16
+  brne PC-3
+
+  ; get varname back
+  pop r16
+
+  ; start of buffer
+  mov ZL, XL
+
+  rcall set_variable
+
+  ; point X past end of string
+  mov XL, YL
+
+  ret
+
+op_let_expr:
   ; do the math
   rcall eval_expression
 
@@ -2791,6 +2852,8 @@ text_error_expected_expression:
   .db "EXPECTED EXPRESSION", 0
 text_error_expected_operand:
   .db "EXPECTED OPERAND", 0
+text_error_expected_string:
+  .db "EXPECTED STRING", 0
 text_error_mismatched_parens:
   .db "MISMATCHED PARENS", 0
 text_error_unterminated_string:
