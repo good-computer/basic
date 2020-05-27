@@ -2700,7 +2700,7 @@ usart_tx_byte_hex:
 
 ; transmit a hex representation of a block of data via the usart
 ; inputs:
-;   Y: pointer to start of data in sram
+;   Z: pointer to start of data in sram
 ;   r16: number of bytes to transmit
 usart_tx_bytes_hex:
   movw r18, r16
