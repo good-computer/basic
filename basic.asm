@@ -1913,11 +1913,8 @@ op_let:
   ldi ZH, high(input_buffer)
 
   ; push number
-  st Z+, r16
-  st Z+, r17
-
-  ; reset it
-  sbiw ZL, 2
+  sts input_buffer,   r16
+  sts input_buffer+1, r17
 
   pop r16
   ldi r17, 0x2
@@ -1995,10 +1992,8 @@ op_clear:
   mov r_gosub_sp, r16
 
   ; clear variable space
-  ldi XL, low(variable_buffer)
-  ldi XH, high(variable_buffer)
   clr r16
-  st X, r16
+  sts variable_buffer, r16
 
   ret
 
