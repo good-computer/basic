@@ -1162,7 +1162,7 @@ parse_expression:
   ldi ZH, high(expr_stack-1)
 
   ; expect operand to start
-  clr r20
+  clr r21
 
 expr_next:
   rcall skip_whitespace
@@ -1171,7 +1171,7 @@ expr_next:
   ld r16, X
 
   ; check expectations
-  tst r20
+  tst r21
   brne expr_check_operator
 
   ; expecting an operand. value types, and opening paren allowed
@@ -1197,7 +1197,7 @@ expr_next:
   st Y+, r3
 
   ; operator next
-  ldi r20, 1
+  ldi r21, 1
 
   rjmp expr_next
 
@@ -1220,7 +1220,7 @@ expr_maybe_var:
   st Y+, r16
 
   ; operator next
-  ldi r20, 1
+  ldi r21, 1
 
   rjmp expr_next
 
@@ -1237,7 +1237,7 @@ expr_maybe_left_paren:
   inc ZL
   st Z, r16
 
-  ; want operand again, so no change to r20
+  ; want operand again, so no change to r21
   rjmp expr_next
 
 expr_not_operand:
@@ -1354,7 +1354,7 @@ expr_push_oper:
   st Z, r16
 
   ; operand next
-  clr r20
+  clr r21
   rjmp expr_next
 
 expr_oper_precedence:
@@ -1388,7 +1388,7 @@ expr_oper_higher_precedence:
   st Z, r16
 
   ; operand next
-  clr r20
+  clr r21
   rjmp expr_next
 
 expr_oper_check_plusminus_precedence:
@@ -1415,7 +1415,7 @@ expr_oper_equal_precedence:
   st Z, r17
 
   ; operand next
-  clr r20
+  clr r21
   rjmp expr_next
 
 
