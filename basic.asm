@@ -1418,11 +1418,12 @@ expr_oper_check_plusminus_precedence:
 expr_oper_equal_precedence:
 
   ; equal precedence, pop and output, then push
-  dec ZL
+
+  ; output the one on the stack
   st Y+, r17
 
-  inc ZL
-  st Z, r17
+  ; "push" the new one. just replace top of stack
+  st Z, r16
 
   ; operand next
   cbr r21, 0x1
