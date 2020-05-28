@@ -60,6 +60,7 @@
 .equ error_out_of_memory        = 13
 .equ error_overflow             = 14
 .equ error_no_such_line         = 15
+.equ error_type_mismatch        = 16
 
 
 .cseg
@@ -286,6 +287,7 @@ error_lookup_table:
   .dw text_error_out_of_memory*2
   .dw text_error_overflow*2
   .dw text_error_no_such_line*2
+  .dw text_error_type_mismatch*2
 
 
 ; move X forward until there's no whitespace under it
@@ -1182,6 +1184,7 @@ string_loop:
 
 
 ; parse an expression into the opbuffer
+; sets r16 if expression is stringery, clears if numbery
 parse_expression:
 
   ; prep expression stack pointer at one behind the stack area
@@ -1189,8 +1192,14 @@ parse_expression:
   ldi ZL, low(expr_stack-1)
   ldi ZH, high(expr_stack-1)
 
-  ; expect operand to start
-  clr r21
+  ; r21 tracks parse state
+  ; bit 0: expecting operand [0] or operator [1]
+  ; bit 1: numeric expression
+  ; bit 2: string expression
+
+  ; start by accepting numeric and string, until we see the first operand and
+  ; disable the other type
+  ldi r21, 0x6
 
 expr_next:
   rcall skip_whitespace
@@ -1204,8 +1213,8 @@ expr_next:
 
   ; expecting an operand. value types, and opening paren allowed
 
-  ; operands (numbers, variables) go to the output buffer, with suitable
-  ; micro-ops so we know how to resolve them at runtime
+  ; operands (numbers, strings, variables) go to the output buffer, with
+  ; suitable micro-ops so we know how to resolve them at runtime
 
   ; try to parse a number
   rcall parse_number
@@ -1214,7 +1223,18 @@ expr_next:
   ret
 
   ; did we even get a number?
-  brtc expr_maybe_var
+  brtc expr_maybe_string
+
+  ; are we accepting numbers?
+  bst r21, 1
+  brts PC+3
+
+  ; nope
+  ldi r_error, error_type_mismatch
+  ret
+
+  ; no longer accepting strings
+  cbr r21, 0x4
 
   ; literal number marker
   ldi r16, 0x1
@@ -1223,6 +1243,35 @@ expr_next:
   ; the number
   st Y+, r2
   st Y+, r3
+
+  ; operator next
+  sbr r21, 0x1
+
+  rjmp expr_next
+
+expr_maybe_string:
+
+  ; try to parse a string
+  rcall parse_string
+  tst r_error
+  breq PC+2
+  ret
+
+  ; did we even get a string?
+  brtc expr_maybe_var
+
+  ; are we accepting strings?
+  bst r21, 2
+  brts PC+3
+
+  ; nope
+  ldi r_error, error_type_mismatch
+  ret
+
+  ; no longer accepting numbers
+  cbr r21, 0x2
+
+  ; already pushed to Y by parse_string
 
   ; operator next
   sbr r21, 0x1
@@ -1239,6 +1288,27 @@ expr_maybe_var:
 
   ; maybe!
   brtc expr_maybe_left_paren
+
+  ; make sure it matches the type we want
+  ; r16 bit 7 is true for string var, false for numeric
+  tst r16
+  brmi PC+4
+
+  ; a string, load string bit, clear number bit
+  bst r21, 1
+  cbr r21, 0x4
+  rjmp PC+3
+
+  ; a number, load number bit, clear string bit
+  bst r21, 2
+  cbr r21, 0x2
+
+  ; continue if its the right type for the var
+  brts PC+3
+
+  ; nope
+  ldi r_error, error_type_mismatch
+  ret
 
   ; variable lookup!
   ldi r17, 0x2
@@ -1287,32 +1357,40 @@ expr_not_operand:
 
 expr_check_operator:
 
-  ; inital check that its an operator; this is doubling up a little but makes
-  ; future checks easier
-  ; operators are ) * + - / (29-2b,2d,2f)
-  cpi r16, 0x29
-  brlo expr_dump_remaining_opers
-  cpi r16, 0x2c
-  brlo expr_start_oper_stack
-  cpi r16, 0x2d
+  ; operator permission check
+
+  ; ) and + work for all operand types
+  cpi r16, ')'
   breq expr_start_oper_stack
-  cpi r16, 0x2f
+  cpi r16, '+'
   breq expr_start_oper_stack
+
+  ; - * / only work for numbers
+  cpi r16, '-'
+  breq expr_check_number_oper
+  cpi r16, '*'
+  breq expr_check_number_oper
+  cpi r16, '/'
+  breq expr_check_number_oper
 
   ; nothing interesting, so end of expression
-  ; pop remaining operators and send to output
 
 expr_dump_remaining_opers:
+; pop remaining operators and send to output
 
   ; check if stack is empty
   cpi ZL, low(expr_stack)
-  brsh PC+5
+  brsh PC+7
 
   ; done! add terminator and get out of here
   clr r16
   st Y+, r16
 
-  ; did it!
+  ; set r16 if expression is stringy
+  bst r21, 2
+  bld r16, 0
+
+  ; did parse things!
   set
   ret
 
@@ -1332,6 +1410,13 @@ expr_dump_remaining_opers:
   st Y+, r17
 
   rjmp expr_dump_remaining_opers
+
+expr_check_number_oper:
+  bst r21, 1
+  brts expr_start_oper_stack
+
+  ldi r_error, error_type_mismatch
+  ret
 
 expr_start_oper_stack:
   ; take the operator
@@ -2868,3 +2953,5 @@ text_error_overflow:
   .db "OVERFLOW", 0
 text_error_no_such_line:
   .db "NO SUCH LINE", 0
+text_error_type_mismatch:
+  .db "TYPE MISMATCH", 0
