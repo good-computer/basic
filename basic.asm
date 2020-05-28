@@ -1181,8 +1181,8 @@ expr_next:
   ld r16, X
 
   ; check expectations
-  tst r21
-  brne expr_check_operator
+  sbrc r21, 0
+  rjmp expr_check_operator
 
   ; expecting an operand. value types, and opening paren allowed
 
@@ -1207,7 +1207,7 @@ expr_next:
   st Y+, r3
 
   ; operator next
-  ldi r21, 1
+  sbr r21, 0x1
 
   rjmp expr_next
 
@@ -1230,7 +1230,7 @@ expr_maybe_var:
   st Y+, r16
 
   ; operator next
-  ldi r21, 1
+  sbr r21, 0x1
 
   rjmp expr_next
 
@@ -1364,7 +1364,7 @@ expr_push_oper:
   st Z, r16
 
   ; operand next
-  clr r21
+  cbr r21, 0x1
   rjmp expr_next
 
 expr_oper_precedence:
@@ -1398,7 +1398,7 @@ expr_oper_higher_precedence:
   st Z, r16
 
   ; operand next
-  clr r21
+  cbr r21, 0x1
   rjmp expr_next
 
 expr_oper_check_plusminus_precedence:
@@ -1425,7 +1425,7 @@ expr_oper_equal_precedence:
   st Z, r17
 
   ; operand next
-  clr r21
+  cbr r21, 0x1
   rjmp expr_next
 
 
