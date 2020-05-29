@@ -2317,8 +2317,8 @@ eval_found_var:
   ; push its value
   ld r16, -Z
   ld r17, -Z
-  st Y+, r16
   st Y+, r17
+  st Y+, r16
 
   rjmp eval_next
 
@@ -2588,11 +2588,24 @@ store_variable:
   ; store name
   st -Y, r16
 
-  ; copy #r17 bytes from Z
+  ; move to start of value storage
+  sub YL, r17
+  brcc PC+2
+  dec YH
+
+  ; save position, since we're about to drive forward
+  push YL
+  push YH
+
+  ; copy #r17 bytes from Z -> Y
   ld r16, Z+
-  st -Y, r16
+  st Y+, r16
   dec r17
   brne PC-3
+
+  ; return position and advance
+  pop YH
+  pop YL
 
   brts store_end_of_variables
   ret
