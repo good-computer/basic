@@ -2042,12 +2042,12 @@ op_let:
   pop r16
 
   ; start of buffer
-  mov ZL, XL
+  movw ZL, XL
 
   rcall set_variable
 
   ; point X past end of string
-  mov XL, YL
+  movw XL, ZL
 
   ret
 
