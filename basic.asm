@@ -2030,6 +2030,9 @@ op_let:
   bst r16, 7
   brtc op_let_expr
 
+  ; skip double-quote
+  adiw XL, 1
+
   ; scan and count length
   clr r17
   mov YL, XL
