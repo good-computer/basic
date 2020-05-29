@@ -2027,8 +2027,8 @@ op_let:
   push r16
 
   ; determine type
-  andi r16, 0x80
-  breq op_let_expr
+  bst r16, 7
+  brtc op_let_expr
 
   ; scan and count length
   clr r17
