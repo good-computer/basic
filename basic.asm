@@ -2065,7 +2065,14 @@ op_let_expr:
 
   pop r16
   ldi r17, 0x2
+
+  push XL
+  push XH
+
   rcall set_variable
+
+  pop XH
+  pop XL
 
   ret
 
