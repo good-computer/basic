@@ -15,7 +15,7 @@
 
 ; op buffer 0360-037f->
 ; allowed to run into the input buffer if necessary, which almost certainly
-; will be ehader during parse
+; will be ahead during parse
 .equ op_buffer = input_buffer - 0x20
 
 ; expression stack 0340-035f
@@ -2553,7 +2553,7 @@ append_variable:
 
 replace_variable:
 
-  ; replacing this slot. check if lenghts match
+  ; replacing this slot. check if lengths match
   cp r17, r19
   brne adjust_variable_space
 
