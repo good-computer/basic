@@ -1981,7 +1981,7 @@ op_input:
   pop XH
   pop XL
   pop r16
-  ret
+  rjmp op_input
 
   ; parse the value
   rcall parse_number
