@@ -1499,7 +1499,6 @@ expr_oper_higher_precedence:
 
 expr_oper_check_plusminus_precedence:
 
-  ; its a plus or a minus, check stack for equal
   cpi r17, '+'
   breq expr_oper_equal_precedence
   cpi r17, '-'
@@ -1736,6 +1735,12 @@ print_expr:
   ret
 
   brtc print_number
+
+  ; null pointer means valid string expression but vars not found, don't print
+  tst r16
+  brne PC+3
+  tst r17
+  breq PC+3
 
   ; print string at returned pointer
   movw ZL, r16
