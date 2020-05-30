@@ -2305,7 +2305,7 @@ eval_check_var:
 
   ; set number/string mode
   bst r16, 7
-  brts PC+4
+  brts PC+3
   sbr r21, 0x2
   rjmp PC+2
   sbr r21, 0x4
