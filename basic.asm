@@ -895,14 +895,7 @@ st_parse_print_done:
   ret
 
 st_parse_print_try:
-  ; try to parse a string
-  rcall parse_string
-  tst r_error
-  breq PC+2
-  ret
-  brts st_parse_print_sep
 
-  ; not a string, so an expression
   rcall parse_expression
   tst r_error
   breq PC+2
@@ -1731,21 +1724,6 @@ print_sep:
   clt
   rjmp print_next
 
-  ; check for string first
-  cpi r16, '"'
-  brne print_expr
-
-  ; print it!
-  movw ZL, XL
-  rcall usart_print
-
-  ; after print, Z lands just after the string, so bring X back from it
-  movw XL, ZL
-
-  ; want new line again
-  set
-  rjmp print_next
-
 print_expr:
 
   ; back up to expression start
@@ -1757,6 +1735,17 @@ print_expr:
   breq PC+2
   ret
 
+  brtc print_number
+
+  ; print string at returned pointer
+  movw ZL, r16
+  rcall usart_print
+
+  ; want new line again
+  set
+  rjmp print_next
+
+print_number:
   ; format number to start of input buffer
   push XL
   push XH
@@ -2237,37 +2226,71 @@ op_reset:
 ;   X: expression op
 ; outputs:
 ;   r16:r17: result
+;   T: result type, string [1] or number [0]
 eval_expression:
 
   ; use the input buffer as the eval stack
   ldi YL, low(input_buffer)
   ldi YH, high(input_buffer)
 
+  ; r21 tracks eval state
+  ; bit 1: numeric expression --- set on first operand
+  ; bit 2: string expression  -/
+  clr r21
+
 eval_next:
+
   ; get expr micro-op
   ld r16, X+
 
   ; terminator
   tst r16
-  brne eval_check_literal
+  brne eval_check_number
 
   ; pop result!
   ld r17, -Y
   ld r16, -Y
 
+  ; indicate result type to caller
+  bst r21, 2
+
   ret
 
-eval_check_literal:
+eval_check_number:
 
-  ; numeric literal
+  ; number
   cpi r16, 0x1
-  brne eval_check_var
+  brne eval_check_string
+
+  ; numeric expression
+  sbr r21, 0x2
 
   ; push number onto stack
   ld r16, X+
   ld r17, X+
   st Y+, r16
   st Y+, r17
+
+  rjmp eval_next
+
+eval_check_string:
+
+  ; string
+  cpi r16, '"'
+  brne eval_check_var
+
+  ; string expression
+  sbr r21, 0x4
+
+  ; push pointer to string on stack
+  ;adiw XL, 1
+  st Y+, XL
+  st Y+, XH
+
+  ; walk X forward to end of string
+  ld r16, X+
+  tst r16
+  brne PC-2
 
   rjmp eval_next
 
@@ -2279,6 +2302,13 @@ eval_check_var:
 
   ; wanted name
   ld r16, X+
+
+  ; set number/string mode
+  bst r16, 7
+  brts PC+4
+  sbr r21, 0x2
+  rjmp PC+2
+  sbr r21, 0x4
 
   ; setup pointer to first variable
   ldi ZL, low(variable_buffer)
@@ -2317,6 +2347,28 @@ eval_try_var:
 
 eval_found_var:
 
+  bld r21, 1
+  brtc eval_push_numeric_var
+
+  ; string expression
+  sbr r21, 0x4
+
+  ; pull Z back to start of string (#r18 bytes back)
+  sub ZL, r18
+  brcc PC+2
+  dec ZH
+
+  ; push pointer to string in variable
+  st Y+, ZL
+  st Y+, ZH
+
+  rjmp eval_next
+
+eval_push_numeric_var:
+
+  ; numeric expression
+  sbr r21, 0x2
+
   ; push its value
   ld r16, -Z
   ld r17, -Z
@@ -2330,6 +2382,11 @@ eval_check_add:
   ; add
   cpi r16, '+'
   brne eval_check_sub
+
+  bst r21, 1
+  brts PC+3
+  ldi r_error, error_type_mismatch
+  ret
 
   ; pop B
   ld r19, -Y
@@ -2359,6 +2416,11 @@ eval_check_sub:
   cpi r16, '-'
   brne eval_check_mul
 
+  bst r21, 1
+  brts PC+3
+  ldi r_error, error_type_mismatch
+  ret
+
   ; pop B
   ld r19, -Y
   ld r18, -Y
@@ -2386,6 +2448,11 @@ eval_check_mul:
   ; mul
   cpi r16, '*'
   brne eval_check_div
+
+  bst r21, 1
+  brts PC+3
+  ldi r_error, error_type_mismatch
+  ret
 
   ; pop B
   ld r19, -Y
@@ -2442,6 +2509,11 @@ eval_check_div:
   ; XXX can't happen? found something on the stack we weren't expecting
   rcall usart_tx_byte
   rjmp blink_forever
+
+  bst r21, 1
+  brts PC+3
+  ldi r_error, error_type_mismatch
+  ret
 
   ; pop B
   ld r19, -Y
