@@ -2437,9 +2437,10 @@ eval_check_div:
 
   ; div
   cpi r16, '/'
-  breq PC+2
+  breq PC+3
 
   ; XXX can't happen? found something on the stack we weren't expecting
+  rcall usart_tx_byte
   rjmp blink_forever
 
   ; pop B
