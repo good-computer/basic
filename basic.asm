@@ -1036,11 +1036,18 @@ text_then:
 
 st_parse_goto:
   rcall parse_expression
+
   tst r_error
   breq PC+2
   ret
+
   brts PC+2
   ldi r_error, error_expected_expression
+
+  tst r16
+  breq PC+2
+  ldi r_error, error_type_mismatch
+
   ret
 
 
