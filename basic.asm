@@ -1095,7 +1095,6 @@ st_parse_let:
   ret
 
   st Y+, r16
-  push r16
 
   rcall skip_whitespace
 
@@ -1107,21 +1106,6 @@ st_parse_let:
 
   rcall skip_whitespace
 
-  pop r16
-  andi r16, 0x80
-  breq st_parse_let_expr
-
-  rcall parse_string
-  tst r_error
-  breq PC+2
-  ret
-
-  brts PC+2
-  ldi r_error, error_expected_string
-
-  ret
-
-st_parse_let_expr:
   rcall parse_expression
   tst r_error
   breq PC+2
@@ -2054,12 +2038,31 @@ op_let:
   ld r16, X+
   push r16
 
-  ; determine type
-  bst r16, 7
-  brtc op_let_expr
+  ; figure out the value
+  rcall eval_expression
 
-  ; skip double-quote
-  adiw XL, 1
+  ; get name back
+  pop r18
+  mov r19, r18
+
+  ; consider type. var bit 7 and T must be both set (string) or both clear (number)
+  andi r18, 0x80
+  bld r18, 6
+  tst r18
+  breq op_let_number
+  cpi r18, 0xc0
+  breq op_let_string
+
+  ldi r_error, error_type_mismatch
+  ret
+
+op_let_string:
+
+  push XL
+  push XH
+
+  ; string pointer
+  movw XL, r16
 
   ; scan and count length
   clr r17
@@ -2070,21 +2073,19 @@ op_let:
   brne PC-3
 
   ; get varname back
-  pop r16
+  mov r16, r19
 
   ; start of buffer
   movw ZL, XL
 
   rcall set_variable
 
-  ; point X past end of string
-  movw XL, ZL
+  pop XH
+  pop XL
 
   ret
 
-op_let_expr:
-  ; do the math
-  rcall eval_expression
+op_let_number:
 
   ; setup a storage buffer for the value
   ldi ZL, low(input_buffer)
@@ -2094,7 +2095,7 @@ op_let_expr:
   sts input_buffer,   r16
   sts input_buffer+1, r17
 
-  pop r16
+  mov r16, r19
   ldi r17, 0x2
 
   push XL
