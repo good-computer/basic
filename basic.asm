@@ -1957,9 +1957,9 @@ op_input:
   brne PC+2
   ret
 
-  push r16
   push XL
   push XH
+  push r16
 
   ldi ZL, low(text_input_prompt*2)
   ldi ZH, high(text_input_prompt*2)
@@ -1978,17 +1978,42 @@ op_input:
   ld r16, X
   tst r16
   brne PC+5
+  pop r16
   pop XH
   pop XL
-  pop r16
   rjmp op_input
 
+  pop r16
+  push r16
+
+  bst r16, 7
+  brtc op_input_number
+
+  ; scan and count length
+  clr r17
+  movw YL, XL
+  inc r17
+  ld r16, Y+
+  tst r16
+  brne PC-3
+
+  movw ZL, XL
+  pop r16
+
+  rcall set_variable
+
+  pop XH
+  pop XL
+
+  rjmp op_input
+
+op_input_number:
   ; parse the value
   rcall parse_number
 
+  pop r16
   pop XH
   pop XL
-  pop r16
 
   ; number parse error?
   tst r_error
