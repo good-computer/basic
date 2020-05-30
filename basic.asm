@@ -2194,7 +2194,13 @@ op_list_next:
 op_run:
   rcall op_clear
 
-  rjmp execute_program
+  push XL
+  push XH
+  rcall execute_program
+  pop XH
+  pop XL
+
+  ret
 
 
 op_end:
