@@ -1577,7 +1577,9 @@ execute_program:
 execute_mainloop:
 
   ; if next instruction is null, exit
-  or r_next_l, r_next_h
+  tst r_next_l
+  brne PC+3
+  tst r_next_h
   breq execute_done
 
   ; setup to read line
