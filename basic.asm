@@ -2038,7 +2038,7 @@ op_let:
 
   ; scan and count length
   clr r17
-  mov YL, XL
+  movw YL, XL
   inc r17
   ld r16, Y+
   tst r16
