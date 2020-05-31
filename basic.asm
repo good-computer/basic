@@ -1892,16 +1892,16 @@ op_goto:
 op_goto_search_loop:
 
   ; setup to read line
-  movw XL, r18
+  movw YL, r18
 
   ; look for end-of-program marker (length 0)
-  ld r20, X+
+  ld r20, Y+
   tst r20
   breq op_goto_not_found
 
   ; load line number
-  ld r16, X+
-  ld r17, X+
+  ld r16, Y+
+  ld r17, Y+
 
   cp r4, r16
   brne PC+2
