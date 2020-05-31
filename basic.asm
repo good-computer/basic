@@ -2414,8 +2414,8 @@ eval_try_var:
 
 eval_found_var:
 
-  bld r21, 1
-  brtc eval_push_numeric_var
+  bst r21, 1
+  brts eval_push_numeric_var
 
   ; string expression
   sbr r21, 0x4
