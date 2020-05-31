@@ -61,6 +61,7 @@
 .equ error_overflow             = 14
 .equ error_no_such_line         = 15
 .equ error_type_mismatch        = 16
+.equ error_break                = 17
 
 
 .cseg
@@ -288,6 +289,7 @@ error_lookup_table:
   .dw text_error_overflow*2
   .dw text_error_no_such_line*2
   .dw text_error_type_mismatch*2
+  .dw text_error_break*2
 
 
 ; move X forward until there's no whitespace under it
@@ -1639,6 +1641,14 @@ execute_statement:
   breq PC+2
   ret
 
+  ; break check
+  rcall usart_rx_byte_maybe
+  brtc PC+5
+  cpi r16, 0x1b
+  brne PC+3
+  ldi r_error, error_break
+  ret
+
   ; look for statement terminator
   ld r16, X+
 
@@ -2891,6 +2901,19 @@ usart_rx_byte:
   ret
 
 
+; receive a byte from the usart if there's one waiting
+; outputs:
+;   T: set if something was read, clear otherwise
+;   r16: received byte, if there was one
+usart_rx_byte_maybe:
+  clt
+  sbis UCSRA, RXC
+  ret
+  in r16, UDR
+  set
+  ret
+
+
 ; transmit a byte via the usart
 ; inputs:
 ;   r16: byte to send
@@ -3132,3 +3155,5 @@ text_error_no_such_line:
   .db "NO SUCH LINE", 0
 text_error_type_mismatch:
   .db "TYPE MISMATCH", 0
+text_error_break:
+  .db "BREAK", 0
