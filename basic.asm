@@ -1586,11 +1586,12 @@ execute_mainloop:
   breq execute_done
 
   ; advance next instruction pointer
+  clr r17
   add r_next_l, r16 ; skip #r16 bytes of opbuffer
+  adc r_next_h, r17
   ldi r16, 3
   adc r_next_l, r16 ; skip length+lineno
-  brcc PC+2
-  inc r_next_h
+  add r_next_h, r17
 
   ; push line number in case we have to report an error
   ld r16, X+
@@ -1922,11 +1923,12 @@ op_goto_search_loop:
   breq op_goto_found
 
   ; advance to next instruction
+  clr r21
   add r18, r20 ; skip #r20 bytes of opbuffer
+  adc r19, r21
   ldi r20, 3
-  adc r18, r20 ; skip length+lineno
-  brcc op_goto_search_loop
-  inc r19
+  add r18, r20 ; skip length+lineno
+  adc r19, r21
   rjmp op_goto_search_loop
 
 op_goto_found:
