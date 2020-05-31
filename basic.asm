@@ -845,6 +845,7 @@ keyword_table:
       "OFF",    0x0e, \
       "SLEEP",  0x0f, \
       "RESET",  0x10, \
+      "CLS",    0x11, \
                       \
       0
 
@@ -866,6 +867,7 @@ keyword_parse_table:
   ret                  ; 0x0e [OFF]
   ret                  ; 0x0f [SLEEP]
   ret                  ; 0x10 [RESET]
+  ret                  ; 0x11 [CLS]
 
 
 st_parse_print:
@@ -1670,6 +1672,7 @@ op_table:
   rjmp op_off     ; 0x0e [OFF]
   rjmp op_sleep   ; 0x0f [SLEEP]
   rjmp op_reset   ; 0x10 [RESET]
+  rjmp op_cls     ; 0x11 [CLS]
 
 op_print:
 
@@ -2265,6 +2268,12 @@ op_reset:
   ldi r16, (1<<WDE)
   out WDTCR, r16
   rjmp PC
+
+
+op_cls:
+  ldi ZL, low(text_clear*2)
+  ldi ZH, high(text_clear*2)
+  rjmp usart_print_static
 
 
 ; evaluate expression
@@ -3078,6 +3087,8 @@ usart_tx_bytes_hex_done:
 
 text_newline:
   .db 0xa, 0xd, 0
+text_clear:
+  .db 27,"[2J",27,"[H", 0
 
 text_banner:
   .db "GOOD COMPUTER", 0
