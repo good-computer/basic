@@ -948,6 +948,11 @@ st_parse_if:
   ldi r_error, error_expected_expression
   ret
 
+  tst r16
+  breq PC+3
+  ldi r_error, error_type_mismatch
+  ret
+
   rcall skip_whitespace
 
   ; =  0x01
@@ -1007,6 +1012,11 @@ comparator_store:
 
   brts PC+3
   ldi r_error, error_expected_expression
+  ret
+
+  tst r16
+  breq PC+3
+  ldi r_error, error_type_mismatch
   ret
 
   rcall skip_whitespace
