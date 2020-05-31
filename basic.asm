@@ -2630,6 +2630,7 @@ set_variable:
   ldi YH, high(variable_buffer)
 
 consider_variable:
+
   ; load the length
   ld r19, Y
 
@@ -2682,23 +2683,46 @@ append_variable:
 
 replace_variable:
 
-  ; replacing this slot. check if lengths match
-  cp r17, r19
-  brne adjust_variable_space
-
-  ; same space, so back Y up to the length, then store here
+  ; gonna reuse slot, so back Y up to the start
   adiw YL, 1
 
-  ; reusing the space
+  ; by default
   clt
 
+  ; see if size matches; if it does, we can just reuse it
+  cp r17, r19
+  brne PC+3
+
+  ; reusing slot
+  clt
   rjmp store_variable
 
-adjust_variable_space:
+  ; close this slot
 
-  ldi r16, 'r'
-  rcall usart_tx_byte
-  rjmp blink_forever
+  push YL
+  push YH
+
+  ; find start of next slot
+  movw XL, YL
+  sbiw XL, 2 ; overhead
+  sub XL, r19
+  brcc PC+2
+  dec XH
+
+  ; predec, so advance
+  adiw XL, 1
+  adiw YL, 1
+
+  ; move X->Y
+  ld r18, -X
+  st -Y, r18
+  dec r19
+  brpl PC-3
+
+  pop YH
+  pop YL
+
+  rjmp consider_variable
 
 store_variable:
 
