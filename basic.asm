@@ -37,12 +37,15 @@
 
 ; global registers
 .def r_error    = r25 ; last error code
-.def r_flags    = r10 ; global state flags
+.def r_flags    = r24 ; global state flags
 .def r_gosub_sp = r11 ; low byte of top of gosub stack
 .def r_next_l   = r12 ; memory location of next instruction
 .def r_next_h   = r13
 .def r_top_l    = r14 ; pointer to top of program (one past end-of-program marker)
 .def r_top_h    = r15
+
+; flag bits
+.equ f_immediate = 0
 
 ; error codes
 .equ error_number_out_of_range  = 1
@@ -333,8 +336,7 @@ handle_line_input:
   movw r8, r2
 
   ; save T flag so we can test immediate mode later
-  clr r_flags
-  bld r_flags, 0
+  bld r_flags, f_immediate
 
   ; parse the line back into the immediate buffer
   ldi YL, low(op_buffer)
@@ -364,8 +366,8 @@ handle_line_input:
   ret
 
   ; if we have a line number, store it
-  tst r_flags
-  brne find_instruction_location
+  sbrc r_flags, f_immediate
+  rjmp find_instruction_location
 
   ; no line number, this is immediate mode and we can just execute it
   ldi XL, low(op_buffer)
@@ -380,9 +382,9 @@ find_instruction_location:
 
   ; Y currently pointing at end of op we just parsed. subtract start of buffer
   ; to find length
-  mov r24, YL
+  mov r23, YL
   ldi r16, low(op_buffer)
-  sub r24, r16
+  sub r23, r16
 
   ; setup pointer to first instruction
   ldi YL, low(program_buffer)
@@ -457,16 +459,16 @@ append_instruction:
 insert_instruction:
 
   ; want room for the whole lot, with room for housekeeping
-  mov r23, r24
-  ldi r22, 3
-  add r23, r22
+  mov r22, r23
+  ldi r21, 3
+  add r22, r21
   rjmp open_instruction_slot
 
 replace_instruction:
 
-  ; #r16 has current length. #r24 has what we need. how much do we need to grow/shrink by?
-  mov r23, r24
-  sub r23, r16
+  ; #r16 has current length. #r23 has what we need. how much do we need to grow/shrink by?
+  mov r22, r23
+  sub r22, r16
 
   ; if its same size, go straight to store
   breq store_instruction
@@ -479,13 +481,13 @@ replace_instruction:
 
 open_instruction_slot:
 
-  ; make a gap of #r23 bytes here
+  ; make a gap of #r22 bytes here
 
   ; get pointer to top of memory
   movw XL, r_top_l
 
   ; add room for the instruction, making X our move target
-  add XL, r23
+  add XL, r22
   brcc PC+2
   inc XH
 
@@ -520,23 +522,23 @@ open_instruction_slot:
 
 close_instruction_slot:
 
-  ; pull back -#r23 bytes here
+  ; pull back -#r22 bytes here
 
   ; if we're replacing it with nothing, then need to pull back 3 more
   ; housekeeping bytes
-  tst r24
+  tst r23
   brne PC+3
 
   ; sub offset
-  ldi r22, 3
-  sub r23, r22
+  ldi r21, 3
+  sub r22, r21
 
   ; get target into X
   movw XL, YL
 
-  ; and source, -#r23 ahead
+  ; and source, -#r22 ahead
   movw ZL, YL
-  sub ZL, r23 ; sub, because its negative and we want to go forward
+  sub ZL, r22 ; sub, because its negative and we want to go forward
   brcs PC+2
   dec ZH
 
@@ -552,7 +554,7 @@ close_instruction_slot:
 
   ; just closed a gap and nothing to replace it with was just deleting a line,
   ; and we're done
-  tst r24
+  tst r23
   brne PC+2
   ret
 
@@ -566,18 +568,18 @@ store_instruction:
   ; Y at start of instruction, which has room
 
   ; store length
-  st Y+, r24
+  st Y+, r23
 
   ; store line number
   st Y+, r8
   st Y+, r9
 
-  ; copy #r24 bytes from op buffer
+  ; copy #r23 bytes from op buffer
   ldi XL, low(op_buffer)
   ldi XH, high(op_buffer)
   ld r16, X+
   st Y+, r16
-  dec r24
+  dec r23
   brne PC-3
 
   brts store_end_of_program
@@ -2195,6 +2197,9 @@ op_new:
   ; clear next instruction
   mov r_next_l, r16
   mov r_next_h, r16
+
+  ; clear all flags
+  clr r_flags
 
   ; fall through
 
