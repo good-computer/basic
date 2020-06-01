@@ -949,10 +949,7 @@ st_parse_if:
   ldi r_error, error_expected_expression
   ret
 
-  tst r16
-  breq PC+3
-  ldi r_error, error_type_mismatch
-  ret
+  push r16
 
   rcall skip_whitespace
 
@@ -972,6 +969,7 @@ st_parse_if:
   breq comparator_right
 
 comparator_unknown:
+  pop r16
   ldi r_error, error_expected_comparator
   ret
 
@@ -1007,6 +1005,9 @@ comparator_store:
   rcall skip_whitespace
 
   rcall parse_expression
+
+  pop r17
+
   tst r_error
   breq PC+2
   ret
@@ -1015,7 +1016,7 @@ comparator_store:
   ldi r_error, error_expected_expression
   ret
 
-  tst r16
+  cp r16, r17
   breq PC+3
   ldi r_error, error_type_mismatch
   ret
@@ -1876,6 +1877,23 @@ op_if:
   ; execute_statement, which will run the rest of the line
   sbr r_flags, 1<<f_abort_line
 
+  brtc comp_number
+
+  ; prep for walk over each string
+  movw YL, r18
+  movw ZL, r16
+
+  ld r4, Y+
+  ld r5, Z+
+  cp r4, r5
+  brne PC+4
+  tst r4
+  brne PC-5
+  rjmp comp_eq
+  brlt comp_lt
+  rjmp comp_gt
+
+comp_number:
   ; now do r18:r19 [r20 compop] r16:r17
   cp r18, r16
   cpc r19, r17
