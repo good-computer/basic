@@ -45,7 +45,8 @@
 .def r_top_h    = r15
 
 ; flag bits
-.equ f_immediate = 0
+.equ f_immediate  = 0
+.equ f_abort_line = 1
 
 ; error codes
 .equ error_number_out_of_range  = 1
@@ -1644,6 +1645,9 @@ execute_statement:
   brcc PC+2
   inc ZH
 
+  ; run line to the end unless told otherwise
+  cbr r_flags, 1<<f_abort_line
+
   ; and jump to the handler
   icall
 
@@ -1658,6 +1662,10 @@ execute_statement:
   cpi r16, 0x1b
   brne PC+3
   ldi r_error, error_break
+  ret
+
+  ; did op ask as to abort?
+  sbrc r_flags, f_abort_line
   ret
 
   ; look for statement terminator
@@ -1863,6 +1871,11 @@ op_if:
 ;  movw r16, r6
   ; END DEBUG
 
+  ; assume match will fail; flag to execute that it should abort line
+  ; this is ignored if it passes, because we jump straight into
+  ; execute_statement, which will run the rest of the line
+  sbr r_flags, 1<<f_abort_line
+
   ; now do r18:r19 [r20 compop] r16:r17
   cp r18, r16
   cpc r19, r17
@@ -1945,6 +1958,9 @@ op_goto_found:
 
   ; found it, set the next line pointer for execution to here
   movw r_next_l, r18
+
+  ; tell executor that line has ended
+  sbr r_flags, 1<<f_abort_line
 
   ; return from command; mainloop will continue at the line we set
   ret
@@ -2181,6 +2197,9 @@ op_return:
   ; save the new stack pointer back
   mov r_gosub_sp, ZL
 
+  ; end line
+  sbr r_flags, 1<<f_abort_line
+
   ret
 
 
@@ -2254,6 +2273,8 @@ op_run:
   pop XH
   pop XL
 
+  ; abort line, for whatever its worth
+  sbr r_flags, 1<<f_abort_line
   ret
 
 
@@ -2262,6 +2283,9 @@ op_end:
   ; clear next instruction
   clr r_next_l
   clr r_next_h
+
+  ; abort line
+  sbr r_flags, 1<<f_abort_line
   ret
 
 
