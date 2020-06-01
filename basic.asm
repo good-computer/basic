@@ -90,6 +90,19 @@
 
 reset:
 
+  ; XXX DEBUG clear memory
+  ldi XL, low(SRAM_START)
+  ldi XH, high(SRAM_START)
+  ldi r16, low(RAMEND)
+  ldi r17, high(RAMEND)
+  ldi r18, 0x55
+  ldi r19, 0xaa
+  st X+, r18
+  st X+, r19
+  cp XL, r16
+  cpc XH, r17
+  brlo PC-4
+
   ; setup stack pointer
   ldi r16, low(stack_top)
   ldi r17, high(stack_top)
@@ -113,21 +126,6 @@ reset:
   ; PB1 for debug
   ldi r16, (1<<PB1)
   out DDRB, r16
-
-
-  ; XXX DEBUG clear the program buffer
-  ldi XL, low(program_buffer)
-  ldi XH, high(program_buffer)
-  ldi r16, low(program_buffer_end)
-  ldi r17, high(program_buffer_end)
-  ldi r18, 0x55
-  ldi r19, 0xaa
-  st X+, r18
-  st X+, r19
-  cp XL, r16
-  cpc XH, r17
-  brlo PC-4
-
 
   ; setup
   rcall op_new
