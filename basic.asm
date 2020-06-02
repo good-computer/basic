@@ -72,6 +72,15 @@
 .equ error_division_by_zero     = 17
 .equ error_break                = 18
 
+; expression ops
+.equ expr_op_number   = 1
+.equ expr_op_string   = 2
+.equ expr_op_variable = 3
+.equ expr_op_add      = 4
+.equ expr_op_subtract = 5
+.equ expr_op_multiply = 6
+.equ expr_op_divide   = 7
+
 
 .cseg
 .org 0x0000
@@ -1163,7 +1172,7 @@ parse_string:
   adiw XL, 1
 
   ; push "string literal" expr op
-  ldi r16, 0x2
+  ldi r16, expr_op_string
   st Y+, r16
 
 string_loop:
@@ -1246,7 +1255,7 @@ expr_next:
   cbr r21, 0x4
 
   ; literal number marker
-  ldi r16, 0x1
+  ldi r16, expr_op_number
   st Y+, r16
 
   ; the number
@@ -1320,7 +1329,7 @@ expr_maybe_var:
   ret
 
   ; variable lookup!
-  ldi r17, 0x3 ; expr op
+  ldi r17, expr_op_variable
   st Y+, r17
 
   ; var name
@@ -1371,19 +1380,19 @@ expr_check_operator:
 
   cpi r16, '+'
   brne PC+3
-  ldi r16, 0x4
+  ldi r16, expr_op_add
   rjmp expr_check_operator_perms
   cpi r16, '-'
   brne PC+3
-  ldi r16, 0x5
+  ldi r16, expr_op_subtract
   rjmp expr_check_operator_perms
   cpi r16, '*'
   brne PC+3
-  ldi r16, 0x6
+  ldi r16, expr_op_multiply
   rjmp expr_check_operator_perms
   cpi r16, '/'
   brne PC+3
-  ldi r16, 0x7
+  ldi r16, expr_op_divide
   rjmp expr_check_operator_perms
 
 expr_check_operator_perms:
@@ -1392,15 +1401,15 @@ expr_check_operator_perms:
   ; ) and + work for all operand types
   cpi r16, ')'
   breq expr_start_oper_stack
-  cpi r16, 0x4
+  cpi r16, expr_op_add
   breq expr_start_oper_stack
 
   ; - * / only work for numbers
-  cpi r16, 0x5
+  cpi r16, expr_op_subtract
   breq expr_check_number_oper
-  cpi r16, 0x6
+  cpi r16, expr_op_multiply
   breq expr_check_number_oper
-  cpi r16, 0x7
+  cpi r16, expr_op_divide
   breq expr_check_number_oper
 
   ; nothing interesting, so end of expression
@@ -1514,15 +1523,15 @@ expr_oper_precedence:
   breq expr_oper_higher_precedence
 
   ; only * and / can have higher precedence
-  cpi r16, 0x6
+  cpi r16, expr_op_multiply
   breq PC+3
-  cpi r16, 0x7
+  cpi r16, expr_op_divide
   brne expr_oper_check_plusminus_precedence
 
   ; check equal precedence
-  cpi r17, 0x6
+  cpi r17, expr_op_multiply
   breq expr_oper_equal_precedence
-  cpi r17, 0x7
+  cpi r17, expr_op_divide
   breq expr_oper_equal_precedence
 
 expr_oper_higher_precedence:
@@ -1536,9 +1545,9 @@ expr_oper_higher_precedence:
 
 expr_oper_check_plusminus_precedence:
 
-  cpi r17, 0x4
+  cpi r17, expr_op_add
   breq expr_oper_equal_precedence
-  cpi r17, 0x5
+  cpi r17, expr_op_add
   breq expr_oper_equal_precedence
 
   ; lower precedence then stack. pop and output, then retest
@@ -2438,13 +2447,13 @@ eval_op_setup:
 
 eval_op_table:
   .dw 0
-  rjmp eval_op_number   ; 0x01 pop number, set numeric expression
-  rjmp eval_op_string   ; 0x02 pop string, set string expression
-  rjmp eval_op_variable ; 0x03 expand variable, set matching expression type
-  rjmp eval_op_add      ; 0x04 pop two, add, push
-  rjmp eval_op_subtract ; 0x05 pop two, subtract, push
-  rjmp eval_op_multiply ; 0x06 pop two, multiply, push
-  rjmp eval_op_divide   ; 0x07 pop two, divide, push
+  rjmp eval_op_number   ; pop number, set numeric expression
+  rjmp eval_op_string   ; pop string, set string expression
+  rjmp eval_op_variable ; expand variable, set matching expression type
+  rjmp eval_op_add      ; pop two, add, push
+  rjmp eval_op_subtract ; pop two, subtract, push
+  rjmp eval_op_multiply ; pop two, multiply, push
+  rjmp eval_op_divide   ; pop two, divide, push
 
 
 eval_op_number:
