@@ -4,6 +4,10 @@ I'm building 70's-style computer. This is the BASIC interpreter for it.
 
 More info: https://twitter.com/robn/status/1255079227990261769
 
+![](good_computer.jpg)
+
+![](good_computer.png)
+
 ## Using it
 
 * Build a standard ATmega system (I use a ATmega8), with USART for I/O and optionally a LED on PB1.
