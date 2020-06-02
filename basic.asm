@@ -1148,59 +1148,6 @@ st_parse_let:
   ret
 
 
-; parse a double-quoted string
-; inputs:
-;   X: pointer to double-quoted string
-; outputs:
-;   Y: string literal expression op, then null-terminated string
-;   T: set if we actually parsed something
-parse_string:
-
-  ; confirm its a string
-  ld r16, X
-  cpi r16, '"'
-  breq PC+3
-
-  ; bounce out
-  clt
-  ret
-
-  ; get this started
-  set
-
-  ; take the double-quote
-  adiw XL, 1
-
-  ; push "string literal" expr op
-  ldi r16, expr_op_string
-  st Y+, r16
-
-string_loop:
-
-  ; take everything up to and the closing double-quote
-  ld r16, X+
-
-  ; hit end of input early?
-  tst r16
-  brne PC+3
-
-  ldi r_error, error_unterminated_string
-  ret
-
-  ; ending double-quote?
-  cpi r16, '"'
-  breq PC+3
-
-  st Y+, r16
-  rjmp string_loop
-
-  ; add null terminator
-  clr r16
-  st Y+, r16
-
-  ret
-
-
 ; parse an expression into the opbuffer
 ; sets r16 if expression is stringery, clears if numbery
 parse_expression:
@@ -1270,13 +1217,9 @@ expr_next:
 expr_maybe_string:
 
   ; try to parse a string
-  rcall parse_string
-  tst r_error
-  breq PC+2
-  ret
-
-  ; did we even get a string?
-  brtc expr_maybe_var
+  ld r16, X
+  cpi r16, '"'
+  brne expr_maybe_var
 
   ; are we accepting strings?
   bst r21, 2
@@ -1289,7 +1232,33 @@ expr_maybe_string:
   ; no longer accepting numbers
   cbr r21, 0x2
 
-  ; already pushed to Y by parse_string
+  ; take the double-quote
+  adiw XL, 1
+
+  ; push "string literal" expr op
+  ldi r16, expr_op_string
+  st Y+, r16
+
+expr_string_loop:
+  ; take everything up to and the closing double-quote
+  ld r16, X+
+
+  ; ran off the end
+  tst r16
+  brne PC+3
+  ldi r_error, error_unterminated_string
+  ret
+
+  ; ending double-quote?
+  cpi r16, '"'
+  breq PC+3
+
+  st Y+, r16
+  rjmp expr_string_loop
+
+  ; add null terminator
+  clr r16
+  st Y+, r16
 
   ; operator next
   sbr r21, 0x1
