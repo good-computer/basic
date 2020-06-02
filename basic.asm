@@ -1344,42 +1344,30 @@ expr_not_operand:
 
 expr_check_operator:
 
-  ; remap operators to expr opcodes
-  ; this is temporary until make parse_expression jumptable-based
-
-  cpi r16, '+'
-  brne PC+3
-  ldi r16, expr_op_add
-  rjmp expr_check_operator_perms
-  cpi r16, '-'
-  brne PC+3
-  ldi r16, expr_op_subtract
-  rjmp expr_check_operator_perms
-  cpi r16, '*'
-  brne PC+3
-  ldi r16, expr_op_multiply
-  rjmp expr_check_operator_perms
-  cpi r16, '/'
-  brne PC+3
-  ldi r16, expr_op_divide
-  rjmp expr_check_operator_perms
-
-expr_check_operator_perms:
-  ; operator permission check
+  ; do operator mode checks, remapping to expr opcodes as we go
 
   ; ) and + work for all operand types
   cpi r16, ')'
   breq expr_start_oper_stack
-  cpi r16, expr_op_add
-  breq expr_start_oper_stack
+  cpi r16, '+'
+  brne PC+3
+  ldi r16, expr_op_add
+  rjmp expr_start_oper_stack
 
   ; - * / only work for numbers
-  cpi r16, expr_op_subtract
-  breq expr_check_number_oper
-  cpi r16, expr_op_multiply
-  breq expr_check_number_oper
-  cpi r16, expr_op_divide
-  breq expr_check_number_oper
+
+  cpi r16, '-'
+  brne PC+3
+  ldi r16, expr_op_subtract
+  rjmp expr_check_number_oper
+  cpi r16, '*'
+  brne PC+3
+  ldi r16, expr_op_multiply
+  rjmp expr_check_number_oper
+  cpi r16, '/'
+  brne PC+3
+  ldi r16, expr_op_divide
+  rjmp expr_check_number_oper
 
   ; nothing interesting, so end of expression
 
