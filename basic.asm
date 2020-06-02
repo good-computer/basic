@@ -69,7 +69,8 @@
 .equ error_overflow             = 14
 .equ error_no_such_line         = 15
 .equ error_type_mismatch        = 16
-.equ error_break                = 17
+.equ error_division_by_zero     = 17
+.equ error_break                = 18
 
 
 .cseg
@@ -295,6 +296,7 @@ error_lookup_table:
   .dw text_error_overflow*2
   .dw text_error_no_such_line*2
   .dw text_error_type_mismatch*2
+  .dw text_error_division_by_zero*2
   .dw text_error_break*2
 
 
@@ -2726,6 +2728,14 @@ eval_op_divide:
   ld r19, -Y
   ld r18, -Y
 
+  tst r18
+  brne PC+5
+  tst r19
+  brne PC+3
+
+  ldi r_error, error_division_by_zero
+  ret
+
   ; pop A
   ld r17, -Y
   ld r16, -Y
@@ -3297,5 +3307,7 @@ text_error_no_such_line:
   .db "NO SUCH LINE", 0
 text_error_type_mismatch:
   .db "TYPE MISMATCH", 0
+text_error_division_by_zero:
+  .db "DIVISION BY ZERO", 0
 text_error_break:
   .db "BREAK", 0
