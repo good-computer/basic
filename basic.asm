@@ -1141,7 +1141,7 @@ st_parse_let:
 ; inputs:
 ;   X: pointer to double-quoted string
 ; outputs:
-;   Y: double-quote marker, then null-terminated string
+;   Y: string literal expression op, then null-terminated string
 ;   T: set if we actually parsed something
 parse_string:
 
@@ -1158,7 +1158,10 @@ parse_string:
   set
 
   ; take the double-quote
-  ld r16, X+
+  adiw XL, 1
+
+  ; push "string literal" expr op
+  ldi r16, 0x2
   st Y+, r16
 
 string_loop:
@@ -1315,7 +1318,7 @@ expr_maybe_var:
   ret
 
   ; variable lookup!
-  ldi r17, 0x2
+  ldi r17, 0x3 ; expr op
   st Y+, r17
 
   ; var name
@@ -1361,20 +1364,41 @@ expr_not_operand:
 
 expr_check_operator:
 
+  ; remap operators to expr opcodes
+  ; this is temporary until make parse_expression jumptable-based
+
+  cpi r16, '+'
+  brne PC+3
+  ldi r16, 0x4
+  rjmp expr_check_operator_perms
+  cpi r16, '-'
+  brne PC+3
+  ldi r16, 0x5
+  rjmp expr_check_operator_perms
+  cpi r16, '*'
+  brne PC+3
+  ldi r16, 0x6
+  rjmp expr_check_operator_perms
+  cpi r16, '/'
+  brne PC+3
+  ldi r16, 0x7
+  rjmp expr_check_operator_perms
+
+expr_check_operator_perms:
   ; operator permission check
 
   ; ) and + work for all operand types
   cpi r16, ')'
   breq expr_start_oper_stack
-  cpi r16, '+'
+  cpi r16, 0x4
   breq expr_start_oper_stack
 
   ; - * / only work for numbers
-  cpi r16, '-'
+  cpi r16, 0x5
   breq expr_check_number_oper
-  cpi r16, '*'
+  cpi r16, 0x6
   breq expr_check_number_oper
-  cpi r16, '/'
+  cpi r16, 0x7
   breq expr_check_number_oper
 
   ; nothing interesting, so end of expression
@@ -1488,15 +1512,15 @@ expr_oper_precedence:
   breq expr_oper_higher_precedence
 
   ; only * and / can have higher precedence
-  cpi r16, '*'
+  cpi r16, 0x6
   breq PC+3
-  cpi r16, '/'
+  cpi r16, 0x7
   brne expr_oper_check_plusminus_precedence
 
   ; check equal precedence
-  cpi r17, '*'
+  cpi r17, 0x6
   breq expr_oper_equal_precedence
-  cpi r17, '/'
+  cpi r17, 0x7
   breq expr_oper_equal_precedence
 
 expr_oper_higher_precedence:
@@ -1510,9 +1534,9 @@ expr_oper_higher_precedence:
 
 expr_oper_check_plusminus_precedence:
 
-  cpi r17, '+'
+  cpi r17, 0x4
   breq expr_oper_equal_precedence
-  cpi r17, '-'
+  cpi r17, 0x5
   breq expr_oper_equal_precedence
 
   ; lower precedence then stack. pop and output, then retest
@@ -2376,7 +2400,7 @@ eval_next:
 
   ; terminator
   tst r16
-  brne eval_check_number
+  brne eval_op_setup
 
   ; pop result!
   ld r17, -Y
@@ -2387,11 +2411,41 @@ eval_next:
 
   ret
 
-eval_check_number:
+eval_op_setup:
 
-  ; number
-  cpi r16, 0x1
-  brne eval_check_string
+  ; XXX can't happen? found something on the stack we weren't expecting
+  cpi r16, 0x8
+  brlo PC+3
+  rcall usart_tx_byte_hex
+  rjmp blink_forever
+
+  ; setup op table pointer
+  ldi ZL, low(eval_op_table)
+  ldi ZH, high(eval_op_table)
+
+  ; offset into table
+  add ZL, r16
+  brcc PC+2
+  inc ZH
+
+  icall
+
+  tst r_error
+  breq eval_next
+  ret
+
+eval_op_table:
+  .dw 0
+  rjmp eval_op_number   ; 0x01 pop number, set numeric expression
+  rjmp eval_op_string   ; 0x02 pop string, set string expression
+  rjmp eval_op_variable ; 0x03 expand variable, set matching expression type
+  rjmp eval_op_add      ; 0x04 pop two, add, push
+  rjmp eval_op_subtract ; 0x05 pop two, subtract, push
+  rjmp eval_op_multiply ; 0x06 pop two, multiply, push
+  rjmp eval_op_divide   ; 0x07 pop two, divide, push
+
+
+eval_op_number:
 
   ; numeric expression
   sbr r21, 0x2
@@ -2402,13 +2456,10 @@ eval_check_number:
   st Y+, r16
   st Y+, r17
 
-  rjmp eval_next
+  ret
 
-eval_check_string:
 
-  ; string
-  cpi r16, '"'
-  brne eval_check_var
+eval_op_string:
 
   ; string expression
   sbr r21, 0x4
@@ -2423,13 +2474,10 @@ eval_check_string:
   tst r16
   brne PC-2
 
-  rjmp eval_next
+  ret
 
-eval_check_var:
 
-  ; variable lookup
-  cpi r16, 0x2
-  brne eval_check_add
+eval_op_variable:
 
   ; wanted name
   ld r16, X+
@@ -2458,7 +2506,7 @@ eval_try_var:
   st Y+, r16
   st Y+, r16
 
-  rjmp eval_next
+  ret
 
   ; get name
   ld r17, -Z
@@ -2493,7 +2541,7 @@ eval_found_var:
   st Y+, ZL
   st Y+, ZH
 
-  rjmp eval_next
+  ret
 
 eval_push_numeric_var:
 
@@ -2506,13 +2554,10 @@ eval_push_numeric_var:
   st Y+, r17
   st Y+, r16
 
-  rjmp eval_next
+  ret
 
-eval_check_add:
 
-  ; add
-  cpi r16, '+'
-  brne eval_check_sub
+eval_op_add:
 
   ; pop B
   ld r19, -Y
@@ -2537,7 +2582,7 @@ eval_check_add:
   st Y+, r16
   st Y+, r17
 
-  rjmp eval_next
+  ret
 
 eval_add_string:
 
@@ -2583,13 +2628,10 @@ eval_add_string:
   pop XH
   pop XL
 
-  rjmp eval_next
+  ret
 
-eval_check_sub:
 
-  ; sub
-  cpi r16, '-'
-  brne eval_check_mul
+eval_op_subtract:
 
   bst r21, 1
   brts PC+3
@@ -2616,13 +2658,10 @@ eval_check_sub:
   st Y+, r16
   st Y+, r17
 
-  rjmp eval_next
+  ret
 
-eval_check_mul:
 
-  ; mul
-  cpi r16, '*'
-  brne eval_check_div
+eval_op_multiply:
 
   bst r21, 1
   brts PC+3
@@ -2673,17 +2712,10 @@ mul_loop:
   st Y+, r18
   st Y+, r19
 
-  rjmp eval_next
+  ret
 
-eval_check_div:
 
-  ; div
-  cpi r16, '/'
-  breq PC+3
-
-  ; XXX can't happen? found something on the stack we weren't expecting
-  rcall usart_tx_byte
-  rjmp blink_forever
+eval_op_divide:
 
   bst r21, 1
   brts PC+3
@@ -2744,7 +2776,7 @@ div_done:
   st Y+, r16
   st Y+, r17
 
-  rjmp eval_next
+  ret
 
 
 ; store a value to a named variable slot
