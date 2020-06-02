@@ -12,7 +12,6 @@ functions:
   RND
   ABS
   INKEY$
-  [CONCAT$]
   LEFT$
   MID$
   RIGHT$

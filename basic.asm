@@ -26,8 +26,12 @@
 .equ gosub_stack     = expr_stack - 0x10
 .equ gosub_stack_end = expr_stack - 1
 
-; list of variables <-0x32f (reverse direction)
-.equ variable_buffer     = gosub_stack - 1
+; string buffer (temp space for strings being created) 0310-032f
+.equ string_buffer     = gosub_stack - 0x20
+.equ string_buffer_end = gosub_stack - 1
+
+; list of variables <-0x30f (reverse direction)
+.equ variable_buffer     = string_buffer - 1
 .equ variable_buffer_end = SRAM_START
 
 ; list of program instructions 0060->
@@ -2355,6 +2359,11 @@ eval_expression:
   ldi YL, low(input_buffer)
   ldi YH, high(input_buffer)
 
+  ; top of string buffer, for creating strings
+  ldi r16, low(string_buffer)
+  ldi r17, high(string_buffer)
+  movw r8, r16
+
   ; r21 tracks eval state
   ; bit 1: numeric expression --- set on first operand
   ; bit 2: string expression  -/
@@ -2505,11 +2514,6 @@ eval_check_add:
   cpi r16, '+'
   brne eval_check_sub
 
-  bst r21, 1
-  brts PC+3
-  ldi r_error, error_type_mismatch
-  ret
-
   ; pop B
   ld r19, -Y
   ld r18, -Y
@@ -2517,6 +2521,9 @@ eval_check_add:
   ; pop A
   ld r17, -Y
   ld r16, -Y
+
+  bst r21, 2
+  brts eval_add_string
 
   ; A + B
   add r16, r18
@@ -2529,6 +2536,52 @@ eval_check_add:
   ; push result
   st Y+, r16
   st Y+, r17
+
+  rjmp eval_next
+
+eval_add_string:
+
+  ; save expression position
+  push XL
+  push XH
+
+  ; ready new string pointer
+  movw XL, r8
+
+  ; push pointer to start of string we're about to create
+  st Y+, XL
+  st Y+, XH
+
+  ; pointer to first string
+  movw ZL, r16
+
+  ; copy first string
+  ld r16, Z+
+  tst r16
+  breq PC+3
+  st X+, r16
+  rjmp PC-4
+
+  ; pointer to second string
+  movw ZL, r18
+
+  ; copy first string
+  ld r16, Z+
+  tst r16
+  breq PC+3
+  st X+, r16
+  rjmp PC-4
+
+  ; trailing null
+  clr r16
+  st X+, r16
+
+  ; save position for next string
+  movw r8, XL
+
+  ; restore expression position
+  pop XH
+  pop XL
 
   rjmp eval_next
 
