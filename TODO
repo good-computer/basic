@@ -10,7 +10,6 @@ clearer abstractions:
 functions:
   INT
   RND
-  ABS
   INKEY$
   LEFT$
   MID$
