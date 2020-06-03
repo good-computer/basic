@@ -1125,10 +1125,55 @@ expr_next:
   ; next char
   ld r16, X
 
+  ; closing paren triggers stack take
+  cpi r16, ')'
+  brne PC+3
+  adiw XL, 1
+  rjmp expr_take_opers
+
   ; check expectations
   sbrc r21, 0
   rjmp expr_check_operator
+  rjmp expr_check_operand
 
+  ; closing paren, so pop all the operators to the opening paren and add them to the op buffer
+expr_take_opers:
+
+  ; top of stack check
+  cpi ZL, low(expr_stack)
+  brsh PC+3
+
+  ; ran out of stack before we found the opening paren
+  ldi r_error, error_mismatched_parens
+  ret
+
+  ; take the top item
+  ld r16, Z
+  dec ZL
+
+  ; check top bit, looking for function end
+  tst r16
+  brmi PC+3
+
+  ; anything else, push to output, go for next
+  st Y+, r16
+  rjmp expr_take_opers
+
+  ; drop the flag bit
+  cbr r16, 0x80
+
+  ; if its now zero, its a normal left paren and we're done
+  breq PC+2
+
+  ; otherwise push the op
+  st Y+, r16
+
+  ; operator next
+  sbr r21, 0x1
+
+  rjmp expr_next
+
+expr_check_operand:
   ; expecting an operand. value types, and opening paren allowed
 
   ; operands (numbers, strings, variables) go to the output buffer, with
@@ -1308,13 +1353,11 @@ expr_check_operator:
 
   ; do operator mode checks, remapping to expr opcodes as we go
 
-  ; ) and + work for all operand types
-  cpi r16, ')'
-  breq expr_start_oper_stack
+  ; + works for all operand types
   cpi r16, '+'
   brne PC+3
   ldi r16, expr_op_add
-  rjmp expr_start_oper_stack
+  rjmp expr_start_oper
 
   ; - * / only work for numbers
 
@@ -1334,7 +1377,7 @@ expr_check_operator:
   ; nothing interesting, so end of expression
 
 expr_dump_remaining_opers:
-; pop remaining operators and send to output
+  ; pop remaining operators and send to output
 
   ; check if stack is empty
   cpi ZL, low(expr_stack)
@@ -1371,53 +1414,14 @@ expr_dump_remaining_opers:
 
 expr_check_number_oper:
   bst r21, 1
-  brts expr_start_oper_stack
+  brts expr_start_oper
 
   ldi r_error, error_type_mismatch
   ret
 
-expr_start_oper_stack:
+expr_start_oper:
   ; take the operator
   adiw XL, 1
-
-  ; right paren first, since it must never go on stack
-  cpi r16, ')'
-  brne expr_try_oper
-
-  ; closing paren, so pop all the operators to the opening paren and add them to the op buffer
-expr_take_opers:
-
-  ; top of stack check
-  cpi ZL, low(expr_stack)
-  brsh PC+3
-
-  ; ran out of stack before we found the opening paren
-  ldi r_error, error_mismatched_parens
-  ret
-
-  ; take the top item
-  ld r16, Z
-  dec ZL
-
-  ; check top bit, looking for function end
-  tst r16
-  brmi PC+3
-
-  ; anything else, push to output, go for next
-  st Y+, r16
-  rjmp expr_take_opers
-
-  ; drop the flag bit
-  cbr r16, 0x80
-
-  ; if its now zero, its a normal left paren and we're done
-  breq PC+2
-
-  ; otherwise push the op
-  st Y+, r16
-
-  rjmp expr_next
-
 
 expr_try_oper:
   ; check if stack empty
