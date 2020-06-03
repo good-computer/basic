@@ -1224,8 +1224,7 @@ expr_maybe_function:
 
   brtc expr_maybe_var
 
-  ; mark and stack the function opcode
-  sbr r17, 0x80
+  ;  stack the (marked) function opcode
   inc ZL
   st Z, r17
 
@@ -1242,7 +1241,7 @@ expr_maybe_var:
   ret
 
   ; maybe!
-  brtc expr_maybe_left_paren
+  brtc expr_not_operand
 
   ; make sure it matches the type we want
   ; r16 bit 7 is true for string var, false for numeric
@@ -1275,23 +1274,6 @@ expr_maybe_var:
   ; operator next
   sbr r21, 0x1
 
-  rjmp expr_next
-
-expr_maybe_left_paren:
-
-  ; left paren goes straight to the stack
-  cpi r16, '('
-  brne expr_not_operand
-
-  ; take it
-  adiw XL, 1
-
-  ; stack its proxy, 0x80
-  ldi r16, 0x80
-  inc ZL
-  st Z, r16
-
-  ; want operand again, so no change to r21
   rjmp expr_next
 
 expr_not_operand:
@@ -1507,7 +1489,8 @@ expr_oper_equal_precedence:
   rjmp expr_next
 
 function_table:
-  .db "ABS(", expr_op_abs, \
+  .db "(",    0x80,             \
+      "ABS(", 0x80|expr_op_abs, \
       0
 
 
@@ -1528,9 +1511,11 @@ parse_token:
 token_loop:
   lpm r17, Z+
 
-  ; if its below the ascii printables area, then its an opcode and we matched
+  ; if its outside the ascii printables area, then its an opcode and we matched
   cpi r17, 0x20
   brlo token_end
+  cpi r17, 0x7f
+  brsh token_end
 
   ; load the next char of the input token and compare
   ld r16, X+
@@ -1545,7 +1530,9 @@ token_loop:
   ; walk Z forward to the next token
   lpm r17, Z+
   cpi r17, 0x20
-  brsh PC-2
+  brlo token_loop
+  cpi r17, 0x7f
+  brlo PC-4
 
   rjmp token_loop
 
