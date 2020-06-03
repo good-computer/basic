@@ -5,10 +5,11 @@
 
 ; XXX I wonder if there's a better way to set up a memory map
 
-; stack 0400-045f
+; stack 0402-045f
 .equ stack_top        = RAMEND
 .equ stack_bottom     = stack_top - 0x5d
 
+; rng state 0400-0402
 .equ rand_l           = stack_bottom - 2
 .equ rand_h           = rand_l + 1
 
