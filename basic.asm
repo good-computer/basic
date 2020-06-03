@@ -80,7 +80,8 @@
 .equ expr_op_subtract = 5
 .equ expr_op_multiply = 6
 .equ expr_op_divide   = 7
-.equ expr_op_LAST     = 8
+.equ expr_op_abs      = 8
+.equ expr_op_LAST     = 9
 
 
 .cseg
@@ -1160,7 +1161,7 @@ expr_maybe_string:
   ; try to parse a string
   ld r16, X
   cpi r16, '"'
-  brne expr_maybe_var
+  brne expr_maybe_function
 
   ; are we accepting strings?
   bst r21, 2
@@ -1203,6 +1204,32 @@ expr_string_loop:
 
   ; operator next
   sbr r21, 0x1
+
+  rjmp expr_next
+
+expr_maybe_function:
+
+  ; start of function table
+  push ZL
+  push ZH
+
+  ldi ZL, low(function_table*2)
+  ldi ZH, high(function_table*2)
+
+  ; try to parse one
+  rcall parse_token
+
+  pop ZH
+  pop ZL
+
+  brtc expr_maybe_var
+
+  ; mark and stack the function opcode
+  sbr r17, 0x80
+  inc ZL
+  st Z, r17
+
+  ; still want operand, so no change
 
   rjmp expr_next
 
@@ -1259,7 +1286,8 @@ expr_maybe_left_paren:
   ; take it
   adiw XL, 1
 
-  ; stack it
+  ; stack its proxy, 0x80
+  ldi r16, 0x80
   inc ZL
   st Z, r16
 
@@ -1336,8 +1364,8 @@ expr_dump_remaining_opers:
   dec ZL
 
   ; check for parens, shouldn't be here
-  cpi r17, '('
-  brne PC+3
+  tst r17
+  brpl PC+3
 
   ; ohnoes
   ldi r_error, error_mismatched_parens
@@ -1378,15 +1406,25 @@ expr_take_opers:
   ld r16, Z
   dec ZL
 
-  ; left paren terminates
-  cpi r16, '('
-  breq PC+3
+  ; check top bit, looking for function end
+  tst r16
+  brmi PC+3
 
   ; anything else, push to output, go for next
   st Y+, r16
   rjmp expr_take_opers
 
+  ; drop the flag bit
+  cbr r16, 0x80
+
+  ; if its now zero, its a normal left paren and we're done
+  breq PC+2
+
+  ; otherwise push the op
+  st Y+, r16
+
   rjmp expr_next
+
 
 expr_try_oper:
   ; check if stack empty
@@ -1395,8 +1433,8 @@ expr_try_oper:
 
   ; see what's on the stack
   ld r17, Z
-  cpi r17, '('
-  brne expr_oper_precedence
+  tst r17
+  brpl expr_oper_precedence
 
 expr_push_oper:
   ; stack empty or left paren on stack, so push the oper
@@ -1417,8 +1455,8 @@ expr_oper_precedence:
   ld r17, Z
 
   ; everything is higher precedence than left paren
-  cpi r17, '('
-  breq expr_oper_higher_precedence
+  tst r17
+  brmi expr_oper_higher_precedence
 
   ; only * and / can have higher precedence
   cpi r16, expr_op_multiply
@@ -1467,6 +1505,10 @@ expr_oper_equal_precedence:
   ; operand next
   cbr r21, 0x1
   rjmp expr_next
+
+function_table:
+  .db "ABS(", expr_op_abs, \
+      0
 
 
 ; parse a token
@@ -2408,6 +2450,7 @@ eval_op_table:
   rjmp eval_op_subtract ; pop two, subtract, push
   rjmp eval_op_multiply ; pop two, multiply, push
   rjmp eval_op_divide   ; pop two, divide, push
+  rjmp eval_op_abs      ; pop one, fix, push
 
 
 eval_op_number:
@@ -2744,6 +2787,34 @@ div_loop:
   rjmp div_loop
 
 div_done:
+
+  ; push result
+  st Y+, r16
+  st Y+, r17
+
+  ret
+
+
+eval_op_abs:
+
+  bst r21, 1
+  brts PC+3
+  ldi r_error, error_type_mismatch
+  ret
+
+  ; pop A
+  ld r17, -Y
+  ld r16, -Y
+
+  ; see if we need to negate?
+  tst r17
+  brpl PC+5
+
+  ; do so!
+  com r17
+  neg r16
+  ldi r18, 0xff
+  sbc r17, r18
 
   ; push result
   st Y+, r16
