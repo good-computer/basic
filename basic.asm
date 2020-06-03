@@ -80,6 +80,7 @@
 .equ expr_op_subtract = 5
 .equ expr_op_multiply = 6
 .equ expr_op_divide   = 7
+.equ expr_op_LAST     = 8
 
 
 .cseg
@@ -2378,7 +2379,7 @@ eval_next:
 eval_op_setup:
 
   ; XXX can't happen? found something on the stack we weren't expecting
-  cpi r16, 0x8
+  cpi r16, expr_op_LAST
   brlo PC+3
   rcall usart_tx_byte_hex
   rjmp blink_forever
