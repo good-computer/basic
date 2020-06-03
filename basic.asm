@@ -712,18 +712,16 @@ parse_statement_list:
   push r16
 
 statement_next:
-  ; try to parse one
-  rcall parse_statement
-  tst r_error
-  breq PC+3
-  pop r16
-  ret
+  ; start of keyword table
+  ldi ZL, low(keyword_table*2)
+  ldi ZH, high(keyword_table*2)
 
-  ; did we get one?
+  ; try to parse one
+  rcall parse_token
   brts statement_got
 
-  ; no, set T if we got any at all
 statement_last:
+  ; no, set T if we got any at all
   clt
   pop r16
   tst r16
@@ -732,7 +730,25 @@ statement_last:
   ret
 
 statement_got:
-  ; got one, bump the count
+  ; got the keyword, subparse
+  rcall skip_whitespace
+
+  ; store the opcode
+  st Y+, r17
+
+  ; set up for rest of statement parse
+  ldi ZL, low(keyword_subparser_table)
+  ldi ZH, high(keyword_subparser_table)
+
+  ; add opcode to get the parser vector
+  add ZL, r17
+  brcc PC+2
+  inc ZH
+
+  ; go there, return to caller
+  icall
+
+  ; bump the count
   pop r16
   inc r16
   push r16
@@ -769,82 +785,6 @@ statement_got:
   rcall skip_whitespace
   rjmp statement_next
 
-
-; parse a statement (keyword + args)
-; inputs:
-;   X: pointer to statement text, will be moved
-; outputs:
-;   Y: oplist, will be moved
-;   T:  set if we actually parsed something
-parse_statement:
-
-  ; take copy of pointer to start of statement, so we can reset it
-  movw r4, XL
-
-  ; start of keyword table
-  ldi ZL, low(keyword_table*2)
-  ldi ZH, high(keyword_table*2)
-
-  ; walk both strings, comparing as we go. if we fail a compare, reset X, jump
-  ; Z forward to next string
-keyword_loop:
-  lpm r17, Z+
-
-  ; if its below the ascii caps area, then its an opcode and we matched
-  cpi r17, 0x40
-  brlo keyword_end
-
-  ; load the next char of the input keyword and compare
-  ld r16, X+
-  cp r16, r17
-  breq keyword_loop
-
-  ; chars didn't match, so we have to start over on the next keyword
-
-  ; reset X to start of input keyword
-  movw XL, r4
-
-  ; walk Z forward to the next keyword
-  lpm r17, Z+
-  cpi r17, 0x40
-  brsh PC-2
-
-  rjmp keyword_loop
-
-keyword_end:
-
-  ; but if its zero, we hit the end of the keyword table, so it wasn't found
-  tst r17
-  brne PC+4
-
-  ; reset X
-  movw XL, r4
-
-  ; flag nothing parsed
-  clt
-  ret
-
-  ; parsed stuff, tell the caller
-  set
-
-  rcall skip_whitespace
-
-  ; store the opcode
-  st Y+, r17
-
-  ; set up for rest of statement parse
-  ldi ZL, low(keyword_parse_table)
-  ldi ZH, high(keyword_parse_table)
-
-  ; add opcode to get the parser vector
-  add ZL, r17
-  brcc PC+2
-  inc ZH
-
-  ; go there, return to caller
-  ijmp
-
-
 keyword_table:
   .db "PRINT",  0x01, \
       "IF",     0x02, \
@@ -867,7 +807,7 @@ keyword_table:
                       \
       0
 
-keyword_parse_table:
+keyword_subparser_table:
   .dw 0                ; 0x00 [reserved]
   rjmp st_parse_print  ; 0x01 PRINT expr-list
   rjmp st_parse_if     ; 0x02 IF expression relop expression THEN statement
@@ -1526,6 +1466,62 @@ expr_oper_equal_precedence:
   ; operand next
   cbr r21, 0x1
   rjmp expr_next
+
+
+; parse a token
+; inputs:
+;   X: pointer to input text, will be moved
+;   Z: pointer to start of token table, will be moved
+; outputs:
+;   r17: opcode
+;   T:  set if we actually parsed something
+parse_token:
+
+  ; take copy of pointer to start of statement, so we can reset it
+  movw r4, XL
+
+  ; walk both strings, comparing as we go. if we fail a compare, reset X, jump
+  ; Z forward to next string
+token_loop:
+  lpm r17, Z+
+
+  ; if its below the ascii printables area, then its an opcode and we matched
+  cpi r17, 0x20
+  brlo token_end
+
+  ; load the next char of the input token and compare
+  ld r16, X+
+  cp r16, r17
+  breq token_loop
+
+  ; chars didn't match, so we have to start over on the next token
+
+  ; reset X to start of input token
+  movw XL, r4
+
+  ; walk Z forward to the next token
+  lpm r17, Z+
+  cpi r17, 0x20
+  brsh PC-2
+
+  rjmp token_loop
+
+token_end:
+
+  ; but if its zero, we hit the end of the token table, so it wasn't found
+  tst r17
+  brne PC+4
+
+  ; reset X
+  movw XL, r4
+
+  ; flag nothing parsed
+  clt
+  ret
+
+  ; parsed stuff, tell the caller
+  set
+  ret
 
 
 ; parse a var name
