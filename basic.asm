@@ -7,11 +7,14 @@
 
 ; stack 0400-045f
 .equ stack_top        = RAMEND
-.equ stack_bottom     = stack_top - 0x5f
+.equ stack_bottom     = stack_top - 0x5d
+
+.equ rand_l           = stack_bottom - 2
+.equ rand_h           = rand_l + 1
 
 ; input buffer 0380-03ff
-.equ input_buffer     = stack_bottom - 0x80
-.equ input_buffer_end = stack_bottom - 1
+.equ input_buffer     = rand_l - 0x80
+.equ input_buffer_end = rand_l - 1
 
 ; op buffer 0360-037f->
 ; allowed to run into the input buffer if necessary, which almost certainly
@@ -81,7 +84,8 @@
 .equ expr_op_multiply = 6
 .equ expr_op_divide   = 7
 .equ expr_op_abs      = 8
-.equ expr_op_LAST     = 9
+.equ expr_op_rnd      = 9
+.equ expr_op_LAST     = 10
 
 
 .cseg
@@ -1491,6 +1495,7 @@ expr_oper_equal_precedence:
 function_table:
   .db "(",    0x80,             \
       "ABS(", 0x80|expr_op_abs, \
+      "RND(", 0x80|expr_op_rnd, \
       0
 
 
@@ -2260,6 +2265,12 @@ op_new:
   ; clear all flags
   clr r_flags
 
+  ; reset random number generator
+  clr r16
+  sts rand_h, r16
+  inc r16
+  sts rand_l, r16
+
   ; fall through
 
 
@@ -2438,6 +2449,7 @@ eval_op_table:
   rjmp eval_op_multiply ; pop two, multiply, push
   rjmp eval_op_divide   ; pop two, divide, push
   rjmp eval_op_abs      ; pop one, fix, push
+  rjmp eval_op_rnd      ; rng, push
 
 
 eval_op_number:
@@ -2804,6 +2816,39 @@ eval_op_abs:
   sbc r17, r18
 
   ; push result
+  st Y+, r16
+  st Y+, r17
+
+  ret
+
+
+eval_op_rnd:
+
+  bst r21, 1
+  brts PC+3
+  ldi r_error, error_type_mismatch
+  ret
+
+  lds r16, rand_l
+  lds r17, rand_h
+
+  ; Xorshift (Marsaglia 2003) variant RNG
+  ; adapted from http://www.retroprogramming.com/2017/07/xorshift-pseudorandom-numbers-in-z80.html
+  mov r18, r17
+  lsr r18
+  mov r18, r16
+  ror r18
+  eor r18, r17
+  mov r17, r18
+  ror r18
+  eor r18, r16
+  mov r16, r18
+  eor r18, r17
+  mov r17, r18
+
+  sts rand_l, r16
+  sts rand_h, r17
+
   st Y+, r16
   st Y+, r17
 
