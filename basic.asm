@@ -751,8 +751,14 @@ statement_got:
   brcc PC+2
   inc ZH
 
-  ; go there, return to caller
+  ; call keyword subparser
   icall
+
+  ; error check
+  tst r_error
+  breq PC+3
+  pop r16
+  ret
 
   ; bump the count
   pop r16
