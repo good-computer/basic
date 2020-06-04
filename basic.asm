@@ -148,9 +148,22 @@ reset:
   out UBRRL, r16
   out UBRRH, r17
 
-  ; PB1 for debug
-  ldi r16, (1<<PB1)
+  ; output: PB1 = LED, PB2 = SPI /SS (SRAM /CS), PB3 = SPI MOSI, PB5 = SPI SCK
+  ; input: PB4 = SPI MISO
+  ; don't care: PB0 PB7
+  ldi r16, (1<<PB1) | (1<<PB2) | (1<<PB3) | (1<<PB5)
   out DDRB, r16
+  ; drive SPI /SS high to disable it
+  ldi r16, (1<<PB2)
+  out PORTB, r16
+
+  ; enable SPI, master mode, clock rate fck/4 (4MHz)
+  ldi r16, (1<<SPE) | (1<<MSTR)
+  ; enable SPI, master mode, clock rate fck/128
+  out SPCR, r16
+  ; SPI clock double (8MHz)
+  ldi r16, (1<<SPI2X)
+  out SPSR, r16
 
   ; setup
   rcall op_new
@@ -818,6 +831,8 @@ keyword_table:
       "RESET",  0x10, \
       "CLS",    0x11, \
                       \
+      "RAMTEST", 0x12, \
+                      \
       0
 
 keyword_subparser_table:
@@ -839,6 +854,7 @@ keyword_subparser_table:
   ret                  ; 0x0f [SLEEP]
   ret                  ; 0x10 [RESET]
   ret                  ; 0x11 [CLS]
+  ret                  ; 0x12 [RAMTEST]
 
 
 st_parse_print:
@@ -1741,6 +1757,7 @@ op_table:
   rjmp op_sleep   ; 0x0f [SLEEP]
   rjmp op_reset   ; 0x10 [RESET]
   rjmp op_cls     ; 0x11 [CLS]
+  rjmp op_ramtest ; 0x12 [RAMTEST]
 
 op_print:
 
@@ -2385,6 +2402,62 @@ op_cls:
   ldi ZL, low(text_clear*2)
   ldi ZH, high(text_clear*2)
   rjmp usart_print_static
+
+
+op_ramtest:
+
+  ldi ZL, low(0x0100)
+  ldi ZH, high(0x0100)
+  clr r16
+  st Z+, r16
+  inc r16
+  brne PC-2
+
+  clr r16
+  clr r17
+  clr r18
+  rcall ram_write_start
+
+  ldi ZL, low(0x0100)
+  ldi ZH, high(0x0100)
+  clr r16
+  rcall ram_write_bytes
+
+  rcall ram_end
+
+  clr r16
+  clr r17
+  clr r18
+  rcall ram_read_start
+
+  ldi ZL, low(0x0200)
+  ldi ZH, high(0x0200)
+  clr r16
+  rcall ram_read_bytes
+
+  rcall ram_end
+
+  ldi ZL, low(0x0100)
+  ldi ZH, high(0x0100)
+  clr r16
+  ldi r17, 0x02
+  rcall usart_tx_bytes_hex
+
+  ldi YL, low(0x0100)
+  ldi YH, high(0x0100)
+  ldi ZL, low(0x0200)
+  ldi ZH, high(0x0200)
+  clr r16
+  ld r17, Y+
+  ld r18, Z+
+  cp r17, r18
+  brne PC+4
+  inc r16
+  brne PC-5
+
+  rjmp op_off
+
+  rjmp op_on
 
 
 ; evaluate expression
@@ -3334,6 +3407,95 @@ usart_tx_bytes_hex_done:
   ldi r16, 0xd
   rcall usart_tx_byte
 
+  ret
+
+
+; begin read from SRAM
+; inputs
+;   r16:r17:r18: 24-bit address
+ram_read_start:
+  ldi r19, 0x3 ; READ
+  rjmp ram_start
+
+; begin write to SRAM
+; inputs
+;   r16:r17:r18: 24-bit address
+ram_write_start:
+  ldi r19, 0x2 ; WRITE
+
+  ; fall through
+
+; start SRAM read/write op
+;   r16:r17:r18: 24-bit address
+;   r19: command (0x2 read, 0x3 write)
+ram_start:
+
+  ; pull /CS low to enable device
+  cbi PORTB, PB2
+
+  ; send command
+  out SPDR, r19
+  sbis SPSR, SPIF
+  rjmp PC-1
+
+  ; send address
+  out SPDR, r18
+  sbis SPSR, SPIF
+  rjmp PC-1
+  out SPDR, r17
+  sbis SPSR, SPIF
+  rjmp PC-1
+  out SPDR, r16
+  sbis SPSR, SPIF
+  rjmp PC-1
+
+  ret
+
+ram_end:
+  ; drive /CS high to indicate end of operation
+  sbi PORTB, PB2
+  ret
+
+; pull stuff from SRAM, previously set up with ram_read_start
+;   r16: number of bytes to read
+;   Z: where to store it
+ram_read_bytes:
+  out SPDR, r16
+  sbis SPSR, SPIF
+  rjmp PC-1
+  in r17, SPDR
+  st Z+, r17
+  dec r16
+  brne ram_read_bytes
+  ret
+
+; read single byte from SRAM, previously set up with ram_read_start
+;   r16: byte read
+ram_read_byte:
+  out SPDR, r16
+  sbis SPSR, SPIF
+  rjmp PC-1
+  in r16, SPDR
+  ret
+
+; write stuff to SRAM, previously set up with ram_write_start
+;   r16: number of bytes to write
+;   Z: pointer to stuff to write
+ram_write_bytes:
+  ld r17, Z+
+  out SPDR, r17
+  sbis SPSR, SPIF
+  rjmp PC-1
+  dec r16
+  brne ram_write_bytes
+  ret
+
+; write single byte to SRAM, previously set up with ram_write_start
+;   r16: byte to write
+ram_write_byte:
+  out SPDR, r16
+  sbis SPSR, SPIF
+  rjmp PC-1
   ret
 
 
