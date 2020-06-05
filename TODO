@@ -1,5 +1,6 @@
 parser:
  - immediate-only/program-only keywords
+ - function arg type/count checks
  
 memory management:
  - check program growth against var buffer and vice-versa, OOM if would overwrite
