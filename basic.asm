@@ -148,10 +148,11 @@ reset:
   out UBRRL, r16
   out UBRRH, r17
 
-  ; output: PB1 = LED, PB2 = SPI /SS (SRAM /CS), PB3 = SPI MOSI, PB5 = SPI SCK
+  ; output: PB0 = error LED, PB1 = user LED
+  ;         PB2 = SPI /SS (SRAM /CS), PB3 = SPI MOSI, PB5 = SPI SCK
   ; input: PB4 = SPI MISO
-  ; don't care: PB0 PB7
-  ldi r16, (1<<PB1) | (1<<PB2) | (1<<PB3) | (1<<PB5)
+  ; don't care: PB7
+  ldi r16, (1<<PB0) | (1<<PB1) | (1<<PB2) | (1<<PB3) | (1<<PB5)
   out DDRB, r16
   ; drive SPI /SS high to disable it
   ldi r16, (1<<PB2)
