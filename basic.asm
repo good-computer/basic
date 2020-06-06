@@ -2459,7 +2459,7 @@ op_new:
   ldi r16, low(opmem_base)
   ldi r17, high(opmem_base)
   movw r_opmem_top_l, r16
-  ldi r16, low(linemap_base)
+  clr r16
   ldi r17, high(linemap_base)
   movw r_linemap_top_l, r16
 
@@ -2467,8 +2467,9 @@ op_new:
   clr r18
   rcall ram_write_start
   clr r16
-  rcall ram_write_byte
-  rcall ram_write_byte
+  clr r17
+  rcall ram_write_pair
+  rcall ram_end
 
   ; clear all flags
   clr r_flags
