@@ -45,8 +45,15 @@
 
 .equ opmem_base   = 0x0000
 .equ opmem_top    = 0xefff
+
+; location in external memory of linemap
+; map of line number (2 bytes) -> pointer to op buffer (2 bytes)
+; only high byte gets considered, so must be on an even page boundary
 .equ linemap_base = 0xf000
-.equ linemap_top  = 0xffff
+.equ linemap_top  = 0x0000
+
+; location in internal memory for current linemap page
+.equ linemap_buffer = 0x0100
 
 
 ; global registers
@@ -430,8 +437,136 @@ find_instruction_location:
   ldi r16, low(op_buffer)
   sub r23, r16
 
+  ; set to write opbuffer out to opmem
+  movw r16, r_opmem_top_l
+  clr r18
+  rcall ram_write_start
+
+  ; write length
+  mov r16, r23
+  rcall ram_write_byte
+
+  ; write buffer
+  ldi ZL, low(op_buffer)
+  ldi ZH, high(op_buffer)
+  rcall ram_write_bytes
+
+  rcall ram_end
+
+  ; setup ref to current linemap page (high byte)
+  ldi r20, high(linemap_base)
+
+  ; load the first page of the linemap
+  clr r16
+  mov r17, r20
+  ldi r17, high(linemap_base)
+  clr r18
+  rcall ram_read_start
+
+linemap_load:
+  ldi ZL, low(linemap_buffer)
+  ldi ZH, high(linemap_buffer)
+  clr r16
+  rcall ram_read_bytes
+
+  ; holding ram active, so we can easily load in the next page
+
+  ; reset to start of buffer
+  ldi ZL, low(linemap_buffer)
+  ldi ZH, high(linemap_buffer)
+
+  ; walk the linemap, looking for the right place to put this
+
+linemap_next:
+  ; load the stored line number
+  ld r16, Z+
+  ld r17, Z+
+
+  ; if we've found line zero, then this is where we put it
+  tst r16
+  brne PC+3
+  tst r17
+  breq append_line
+
+  ; compare the line number we're looking with the one we just parsed
+  cp r8, r16
+  cpc r9, r17
+
+  ; if its the same number, we're replacing it
+  breq replace_line
+
+  ; if its lower than us, then we belong here and need to push forward
+  brlo insert_line
+
+  ; its higher than us, so we need to move along and try the next one
+
+  ; advancing; skip the opmem pointer
+  adiw ZL, 2
+
+  ; see if we've gone off the end of the page
+  tst ZL
+  brne linemap_next
+
+  ; yep, load the next page
+  inc r20
+  rjmp linemap_load
+
+replace_line:
+
+insert_line:
+
   sbi PORTB, PB0
   rjmp PC
+
+append_line:
+
+  ; finish read
+  rcall ram_end
+
+  ; if we're at the last entry of the last linemap page, then we can't add any more
+  cpi r20, high(linemap_top-1)
+  brne PC+5
+  cpi ZL, 0xfe ; Z is two bytes into last entry
+  brne PC+3
+
+  ldi r_error, error_out_of_memory
+  ret
+
+  ; move Z back to line number position
+  sbiw ZL, 2
+
+  ; prep for ram write; low byte is from Z, high byte from current page
+  mov r16, ZL
+  mov r17, r20
+  clr r18
+  rcall ram_write_start
+
+  ; write line number
+  movw r16, r8
+  rcall ram_write_pair
+
+  ; write opmem pointer
+  movw r16, r_opmem_top_l
+  rcall ram_write_pair
+
+  ; write end-of-linemap marker
+  clr r16
+  clr r17
+  rcall ram_write_pair
+
+  ; write done!
+  rcall ram_end
+
+  ; advance opmem top pointer past the #r23+1 bytes of opmem
+  inc r_opmem_top_l
+  brne PC+2
+  inc r_opmem_top_h
+  add r_opmem_top_l, r23
+  brcc PC+2
+  inc r_opmem_top_h
+
+  ret
+
 
 ;  ; setup pointer to first instruction
 ;  ldi YL, low(program_buffer)
@@ -2309,6 +2444,13 @@ op_new:
   ldi r17, high(linemap_base)
   movw r_linemap_top_l, r16
 
+  ; zero linemap in external ram
+  clr r18
+  rcall ram_write_start
+  clr r16
+  rcall ram_write_byte
+  rcall ram_write_byte
+
   ; clear all flags
   clr r_flags
 
@@ -3519,6 +3661,18 @@ ram_write_bytes:
 ;   r16: byte to write
 ram_write_byte:
   out SPDR, r16
+  sbis SPSR, SPIF
+  rjmp PC-1
+  ret
+
+; write two bytse to SRAM, previously set up with ram_write_start
+;   r16: first byte to write
+;   r17: second byte to write
+ram_write_pair:
+  out SPDR, r16
+  sbis SPSR, SPIF
+  rjmp PC-1
+  out SPDR, r17
   sbis SPSR, SPIF
   rjmp PC-1
   ret
