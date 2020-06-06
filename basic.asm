@@ -453,6 +453,14 @@ find_instruction_location:
 
   rcall ram_end
 
+  ; now we need to update the linemap with this line
+
+  ; T flag indicates whether this is the last instruction in the program. if
+  ; so, we will set the empty end-of-program instruction after we store the new
+  ; instruction. setting it for the most common case of adding the line to the
+  ; end of the program
+  set
+
   ; setup ref to current linemap page (high byte)
   ldi r20, high(linemap_base)
 
@@ -511,12 +519,15 @@ linemap_next:
   inc r20
   rjmp linemap_load
 
-replace_line:
-
 insert_line:
 
   sbi PORTB, PB0
   rjmp PC
+
+replace_line:
+
+  ; not changing the end marker, otherwise its the same as append
+  clt
 
 append_line:
 
@@ -549,14 +560,6 @@ append_line:
   movw r16, r_opmem_top_l
   rcall ram_write_pair
 
-  ; write end-of-linemap marker
-  clr r16
-  clr r17
-  rcall ram_write_pair
-
-  ; write done!
-  rcall ram_end
-
   ; advance opmem top pointer past the #r23+1 bytes of opmem
   inc r_opmem_top_l
   brne PC+2
@@ -565,7 +568,23 @@ append_line:
   brcc PC+2
   inc r_opmem_top_h
 
-  ret
+  ; if T is set, we just appended, and need to update the end marker
+  brts PC+2
+  rjmp ram_end
+
+  ; advance linemap top pointer four bytes
+  ldi r16, 4
+  add r_linemap_top_l, r16
+  brcc PC+2
+  inc r_linemap_top_h
+
+  ; write end-of-linemap marker
+  clr r16
+  clr r17
+  rcall ram_write_pair
+
+  ; write done!
+  rjmp ram_end
 
 
 ;  ; setup pointer to first instruction
