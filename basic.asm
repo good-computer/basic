@@ -3276,7 +3276,7 @@ store_end_of_variables:
 
 blink_forever:
 
-  sbi PORTB, PB1
+  sbi PORTB, PB0
 
   ; ~500ms
   ldi  r18, 41
@@ -3289,7 +3289,7 @@ blink_forever:
   dec  r18
   brne PC-5
 
-  cbi PORTB, PB1
+  cbi PORTB, PB0
 
   ; ~500ms
   ldi  r18, 41
