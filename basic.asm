@@ -31,6 +31,10 @@
 .equ expr_stack     = 0x03e0
 .equ expr_stack_end = 0x03ef
 
+; external ram tracking
+.equ r_opmem_top_l   = 0x03fc ; top of opmem (position of next instruction)
+.equ r_opmem_top_h   = 0x03fd
+
 ; rng state
 .equ rand_l = 0x03fe
 .equ rand_h = 0x03ff
@@ -57,12 +61,8 @@
 ; global registers
 .def r_error    = r25 ; last error code
 .def r_flags    = r24 ; global state flags
-.def r_gosub_sp = r11 ; low byte of top of gosub stack
+.def r_gosub_sp = r15 ; low byte of top of gosub stack
 
-.def r_opmem_top_l   = r12 ; top of opmem (position of next instruction)
-.def r_opmem_top_h   = r13
-.def r_linemap_top_l = r14 ; top of linemap (one past last line)
-.def r_linemap_top_h = r15
 
 ; flag bits
 .equ f_immediate  = 0
@@ -436,7 +436,9 @@ find_instruction_location:
   sub r23, r16
 
   ; set to write opbuffer out to opmem
-  movw r16, r_opmem_top_l
+  lds r16, r_opmem_top_l
+  lds r17, r_opmem_top_h
+  movw XL, r16 ; save for further down
   clr r18
   rcall ram_write_start
 
@@ -555,26 +557,21 @@ append_line:
   rcall ram_write_pair
 
   ; write opmem pointer
-  movw r16, r_opmem_top_l
+  movw r16, XL
   rcall ram_write_pair
 
   ; advance opmem top pointer past the #r23+1 bytes of opmem
-  inc r_opmem_top_l
-  brne PC+2
-  inc r_opmem_top_h
-  add r_opmem_top_l, r23
+  adiw XL, 1
+  add XL, r23
   brcc PC+2
-  inc r_opmem_top_h
+  inc XH
+
+  sts r_opmem_top_l, XL
+  sts r_opmem_top_h, XH
 
   ; if T is set, we just appended, and need to update the end marker
   brts PC+2
   rjmp ram_end
-
-  ; advance linemap top pointer four bytes
-  ldi r16, 4
-  add r_linemap_top_l, r16
-  brcc PC+2
-  inc r_linemap_top_h
 
   ; write end-of-linemap marker
   clr r16
@@ -2494,12 +2491,12 @@ op_new:
   ; reset opmem and linemap
   ldi r16, low(opmem_base)
   ldi r17, high(opmem_base)
-  movw r_opmem_top_l, r16
-  clr r16
-  ldi r17, high(linemap_base)
-  movw r_linemap_top_l, r16
+  sts r_opmem_top_l, r16
+  sts r_opmem_top_h, r17
 
   ; zero linemap in external ram
+  clr r16
+  ldi r17, high(linemap_base)
   clr r18
   rcall ram_write_start
   clr r16
