@@ -744,17 +744,19 @@ keyword_table:
       "LET",    0x05, \
       "GOSUB",  0x06, \
       "RETURN", 0x07, \
-      "NEW",    0x08, \
-      "CLEAR",  0x09, \
-      "LIST",   0x0a, \
-      "RUN",    0x0b, \
-      "END",    0x0c, \
+      "FOR",    0x08, \
+      "NEXT",   0x09, \
+      "NEW",    0x0a, \
+      "CLEAR",  0x0b, \
+      "LIST",   0x0c, \
+      "RUN",    0x0d, \
+      "END",    0x0e, \
                       \
-      "ON",     0x0d, \
-      "OFF",    0x0e, \
-      "SLEEP",  0x0f, \
-      "RESET",  0x10, \
-      "CLS",    0x11, \
+      "ON",     0x0f, \
+      "OFF",    0x10, \
+      "SLEEP",  0x11, \
+      "RESET",  0x12, \
+      "CLS",    0x13, \
                       \
       0
 
@@ -767,16 +769,18 @@ keyword_subparser_table:
   rjmp st_parse_let      ; 0x05 LET var = expression
   rjmp st_parse_goto     ; 0x06 GOSUB expression
   rjmp invalid_immediate ; 0x07 RETURN
-  rjmp invalid_program   ; 0x08 NEW
-  rjmp invalid_program   ; 0x09 CLEAR
-  ret                    ; 0x0a LIST
-  rjmp invalid_program   ; 0x0b RUN
-  rjmp invalid_immediate ; 0x0c END
-  ret                    ; 0x0d [ON]
-  ret                    ; 0x0e [OFF]
-  ret                    ; 0x0f [SLEEP]
-  ret                    ; 0x10 [RESET]
-  ret                    ; 0x11 [CLS]
+  rjmp st_parse_for      ; 0x08 FOR var = expression TO expression
+  rjmp st_parse_next     ; 0x09 NEXT var
+  rjmp invalid_program   ; 0x0a NEW
+  rjmp invalid_program   ; 0x0b CLEAR
+  ret                    ; 0x0c LIST
+  rjmp invalid_program   ; 0x0d RUN
+  rjmp invalid_immediate ; 0x0e END
+  ret                    ; 0x0f [ON]
+  ret                    ; 0x10 [OFF]
+  ret                    ; 0x11 [SLEEP]
+  ret                    ; 0x12 [RESET]
+  ret                    ; 0x13 [CLS]
 
 
 invalid_immediate:
@@ -1054,6 +1058,18 @@ st_parse_let:
   ldi r_error, error_expected_expression
 
   ret
+
+
+st_parse_for:
+
+  sbi PORTB, PB0
+  rjmp PC
+
+
+st_parse_next:
+
+  sbi PORTB, PB0
+  rjmp PC
 
 
 ; parse an expression into the opbuffer
@@ -1750,16 +1766,18 @@ op_table:
   rjmp op_let     ; 0x05 LET var = expression
   rjmp op_gosub   ; 0x06 GOSUB expression
   rjmp op_return  ; 0x07 RETURN
-  rjmp op_new     ; 0x08 NEW
-  rjmp op_clear   ; 0x09 CLEAR
-  rjmp op_list    ; 0x0a LIST
-  rjmp op_run     ; 0x0b RUN
-  rjmp op_end     ; 0x0c END
-  rjmp op_on      ; 0x0d [ON]
-  rjmp op_off     ; 0x0e [OFF]
-  rjmp op_sleep   ; 0x0f [SLEEP]
-  rjmp op_reset   ; 0x10 [RESET]
-  rjmp op_cls     ; 0x11 [CLS]
+  rjmp op_for     ; 0x08 FOR var = expression TO expression
+  rjmp op_next    ; 0x09 NEXT var
+  rjmp op_new     ; 0x0a NEW
+  rjmp op_clear   ; 0x0b CLEAR
+  rjmp op_list    ; 0x0c LIST
+  rjmp op_run     ; 0x0d RUN
+  rjmp op_end     ; 0x0e END
+  rjmp op_on      ; 0x0f [ON]
+  rjmp op_off     ; 0x10 [OFF]
+  rjmp op_sleep   ; 0x11 [SLEEP]
+  rjmp op_reset   ; 0x12 [RESET]
+  rjmp op_cls     ; 0x13 [CLS]
 
 op_print:
 
@@ -2293,6 +2311,18 @@ op_return:
   sbr r_flags, (1<<f_abort_line)|(1<<f_jump)
 
   ret
+
+
+op_for:
+
+  sbi PORTB, PB0
+  rjmp PC
+
+
+op_next:
+
+  sbi PORTB, PB0
+  rjmp PC
 
 
 op_new:
