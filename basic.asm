@@ -756,8 +756,6 @@ keyword_table:
       "RESET",  0x10, \
       "CLS",    0x11, \
                       \
-      "RAMTEST", 0x12, \
-                      \
       0
 
 keyword_subparser_table:
@@ -779,7 +777,6 @@ keyword_subparser_table:
   ret                    ; 0x0f [SLEEP]
   ret                    ; 0x10 [RESET]
   ret                    ; 0x11 [CLS]
-  ret                    ; 0x12 [RAMTEST]
 
 
 invalid_immediate:
@@ -1763,7 +1760,6 @@ op_table:
   rjmp op_sleep   ; 0x0f [SLEEP]
   rjmp op_reset   ; 0x10 [RESET]
   rjmp op_cls     ; 0x11 [CLS]
-  rjmp op_ramtest ; 0x12 [RAMTEST]
 
 op_print:
 
@@ -2494,62 +2490,6 @@ op_cls:
   ldi ZL, low(text_clear*2)
   ldi ZH, high(text_clear*2)
   rjmp usart_print_static
-
-
-op_ramtest:
-
-  ldi ZL, low(0x0100)
-  ldi ZH, high(0x0100)
-  clr r16
-  st Z+, r16
-  inc r16
-  brne PC-2
-
-  clr r16
-  clr r17
-  clr r18
-  rcall ram_write_start
-
-  ldi ZL, low(0x0100)
-  ldi ZH, high(0x0100)
-  clr r16
-  rcall ram_write_bytes
-
-  rcall ram_end
-
-  clr r16
-  clr r17
-  clr r18
-  rcall ram_read_start
-
-  ldi ZL, low(0x0200)
-  ldi ZH, high(0x0200)
-  clr r16
-  rcall ram_read_bytes
-
-  rcall ram_end
-
-  ldi ZL, low(0x0100)
-  ldi ZH, high(0x0100)
-  clr r16
-  ldi r17, 0x02
-  rcall usart_tx_bytes_hex
-
-  ldi YL, low(0x0100)
-  ldi YH, high(0x0100)
-  ldi ZL, low(0x0200)
-  ldi ZH, high(0x0200)
-  clr r16
-  ld r17, Y+
-  ld r18, Z+
-  cp r17, r18
-  brne PC+4
-  inc r16
-  brne PC-5
-
-  rjmp op_off
-
-  rjmp op_on
 
 
 ; evaluate expression
