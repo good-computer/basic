@@ -68,6 +68,7 @@
 .equ f_immediate  = 0
 .equ f_abort_line = 1
 .equ f_jump       = 2
+.equ f_end        = 3
 
 ; error codes
 .equ error_number_out_of_range  = 1
@@ -1864,8 +1865,8 @@ exec_linemap_next:
   ldi XL, low(op_buffer)
   ldi XH, high(op_buffer)
 
-  ; probably won't jump
-  cbr r_flags, (1<<f_jump)
+  ; assume normalcy
+  cbr r_flags, (1<<f_jump)|(1<<f_end)
 
   ; go
   rcall execute_statement
@@ -1885,6 +1886,10 @@ exec_linemap_next:
   ; error
   set ; include line number
   rjmp handle_error
+
+  ; program over?
+  sbrc r_flags, f_end
+  ret
 
   ; if we're doing a jump, then we don't need the normal advance
   sbrc r_flags, f_jump
@@ -2670,16 +2675,9 @@ op_run:
 
 op_end:
 
-  sbi PORTB, PB0
-  rjmp PC
-
-;  ; clear next instruction
-;  clr r_next_l
-;  clr r_next_h
-;
-;  ; abort line
-;  sbr r_flags, 1<<f_abort_line
-;  ret
+  ; abort line
+  sbr r_flags, (1<<f_abort_line)|(1<<f_end)
+  ret
 
 
 op_on:
