@@ -3,7 +3,10 @@ parser:
  - function arg type/count checks
  
 memory management:
- - check program growth against var buffer and vice-versa, OOM if would overwrite
+ - insert line
+ - replace line
+ - bounds checks on all buffers
+ - garbage collector?
 
 clearer abstractions:
 - skip whitespace at start/end outside of keyword parsers?

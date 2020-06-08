@@ -202,41 +202,6 @@ main:
 
 main_loop:
 
-; XXX START DEBUG
-
-;  ; start of program buffer
-;  ldi ZL, low(program_buffer)
-;  ldi ZH, high(program_buffer)
-;  ldi r16, 0x20
-;  ldi r17, 0x00
-;  rcall usart_tx_bytes_hex
-;
-;  ldi r16, 0xa
-;  rcall usart_tx_byte
-;  ldi r16, 0xd
-;  rcall usart_tx_byte
-;
-;  ; top of program buffer
-;  ldi ZL, low(program_buffer_end-0x1f)
-;  ldi ZH, high(program_buffer_end-0x1f)
-;  ldi r16, 0x20
-;  ldi r17, 0x00
-;  rcall usart_tx_bytes_hex
-;
-;  ldi r16, 0xa
-;  rcall usart_tx_byte
-;  ldi r16, 0xd
-;  rcall usart_tx_byte
-;
-;  ; start of input buffer (immediately after program buffer)
-;  ldi ZL, low(input_buffer)
-;  ldi ZH, high(input_buffer)
-;  ldi r16, 0x20
-;  ldi r17, 0x00
-;  rcall usart_tx_bytes_hex
-
-; XXX END DEBUG
-
   ; clear last error
   clr r_error
 
@@ -527,10 +492,14 @@ linemap_next:
 
 insert_line:
 
+  ; XXX open a gap, put this line in it
+
   sbi PORTB, PB0
   rjmp PC
 
 replace_line:
+
+  ; XXX consider length and remove line if we're replacing with nothing
 
   ; not changing the end marker, otherwise its the same as append
   clt
@@ -586,216 +555,6 @@ append_line:
 
   ; write done!
   rjmp ram_end
-
-
-;  ; setup pointer to first instruction
-;  ldi YL, low(program_buffer)
-;  ldi YH, high(program_buffer)
-;
-;  ; T flag indicates whether this is the last instruction in the program. if
-;  ; so, we will set the empty end-of-program instruction after we store the new
-;  ; instruction. setting it for the most common case of adding the line to the
-;  ; end of the program
-;  set
-;
-;consider_instruction:
-;  ; load the length
-;  ld r16, Y
-;
-;  ; check for the empty end-of-program instruction
-;  ; if its here, we can go directly to append
-;  tst r16
-;  breq append_instruction
-;
-;  ; advance past the length field
-;  adiw YL, 1
-;
-;  ; load the line number
-;  ld r17, Y+
-;  ld r18, Y+
-;
-;  ; move Y back to start of instruction
-;  sbiw YL, 3
-;
-;  ; compare the line number we're looking with the one we just parsed
-;  cp r8, r17
-;  cpc r9, r18
-;
-;  ; if its the same number, we're replacing it
-;  breq replace_instruction
-;
-;  ; if its lower than us, then we belong here and need to push forward
-;  brlo insert_instruction
-;
-;  ; its higher than us, so we need to move along and try the next one
-;
-;  ; move Y to next slot position, #r16 long (+3)
-;  adiw YL, 3
-;  add YL, r16
-;  brcc consider_instruction
-;  inc YH
-;  rjmp consider_instruction
-;
-;append_instruction:
-;
-;  ; need to check if there's room. compute position of new top pointer
-;  movw XL, YL
-;  adiw XL, 4 ; length + 2xlineno + end-of-program
-;  add XL, r16
-;  brcc PC+2
-;  inc XH
-;
-;  ; see if we've gone past the end
-;  ldi r19, low(program_buffer_end)
-;  ldi r20, high(program_buffer_end)
-;  cp r19, XL
-;  cpc r20, XH
-;  brsh PC+3
-;
-;  ; aww
-;  ldi r_error, error_out_of_memory
-;  ret
-;
-;  rjmp store_instruction
-;
-;insert_instruction:
-;
-;  ; want room for the whole lot, with room for housekeeping
-;  mov r22, r23
-;  ldi r21, 3
-;  add r22, r21
-;  rjmp open_instruction_slot
-;
-;replace_instruction:
-;
-;  ; #r16 has current length. #r23 has what we need. how much do we need to grow/shrink by?
-;  mov r22, r23
-;  sub r22, r16
-;
-;  ; if its same size, go straight to store
-;  breq store_instruction
-;
-;  ; grow? just a smaller open
-;  brsh open_instruction_slot
-;
-;  ; shrink
-;  rjmp close_instruction_slot
-;
-;open_instruction_slot:
-;
-;  ; make a gap of #r22 bytes here
-;
-;  ; get pointer to top of memory
-;  movw XL, r_top_l
-;
-;  ; add room for the instruction, making X our move target
-;  add XL, r22
-;  brcc PC+2
-;  inc XH
-;
-;  ; see if we've gone past the end
-;  ldi r19, low(program_buffer_end)
-;  ldi r20, high(program_buffer_end)
-;  cp r19, XL
-;  cpc r20, XH
-;  brsh PC+3
-;
-;  ; aww
-;  ldi r_error, error_out_of_memory
-;  ret
-;
-;  ; move source is just the existing top
-;  movw ZL, r_top_l
-;
-;  ; new top is in X
-;  movw r_top_l, XL
-;
-;  ; now copy from Z -> X, rolling down until Z = Y
-;  ld r4, -Z
-;  st -X, r4
-;  cp ZL, YL
-;  cpc ZH, YH
-;  brne PC-4
-;
-;  ; no end-of-program instruction
-;  clt
-;
-;  rjmp store_instruction
-;
-;close_instruction_slot:
-;
-;  ; pull back -#r22 bytes here
-;
-;  ; if we're replacing it with nothing, then need to pull back 3 more
-;  ; housekeeping bytes
-;  tst r23
-;  brne PC+3
-;
-;  ; sub offset
-;  ldi r21, 3
-;  sub r22, r21
-;
-;  ; get target into X
-;  movw XL, YL
-;
-;  ; and source, -#r22 ahead
-;  movw ZL, YL
-;  sub ZL, r22 ; sub, because its negative and we want to go forward
-;  brcs PC+2
-;  dec ZH
-;
-;  ; now copy from Z -> X, rolling up until Z = r_top
-;  ld r4, Z+
-;  st X+, r4
-;  cp ZL, r_top_l
-;  cpc ZH, r_top_h
-;  brne PC-4
-;
-;  ; new top is in X
-;  movw r_top_l, XL
-;
-;  ; just closed a gap and nothing to replace it with was just deleting a line,
-;  ; and we're done
-;  tst r23
-;  brne PC+2
-;  ret
-;
-;  ; no end-of-program instruction
-;  clt
-;
-;  ; fall through to store instruction
-;
-;store_instruction:
-;
-;  ; Y at start of instruction, which has room
-;
-;  ; store length
-;  st Y+, r23
-;
-;  ; store line number
-;  st Y+, r8
-;  st Y+, r9
-;
-;  ; copy #r23 bytes from op buffer
-;  ldi XL, low(op_buffer)
-;  ldi XH, high(op_buffer)
-;  ld r16, X+
-;  st Y+, r16
-;  dec r23
-;  brne PC-3
-;
-;  brts store_end_of_program
-;  ret
-;
-;store_end_of_program:
-;  ; zero the length on the next instruction
-;  clr r16
-;  st Y+, r16
-;
-;  ; moved top of memory
-;  movw r_top_l, YL
-;
-;  ret
 
 
 ; parse an ascii number
