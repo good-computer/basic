@@ -1792,65 +1792,103 @@ parse_var:
 
 execute_program:
 
-  sbi PORTB, PB0
-  rjmp PC
+  ; clear last error
+  clr r_error
 
-;  ; clear last error
-;  clr r_error
-;
-;  ; set next line pointer to start of program buffer
-;  ldi r16, low(program_buffer)
-;  ldi r17, high(program_buffer)
-;  movw r_next_l, r16
-;
-;execute_mainloop:
-;
-;  ; if next instruction is null, exit
-;  tst r_next_l
-;  brne PC+3
-;  tst r_next_h
-;  breq execute_done
-;
-;  ; setup to read line
-;  movw XL, r_next_l
-;
-;  ; look for end-of-program marker (length 0)
-;  ld r16, X+
-;  tst r16
-;  breq execute_done
-;
-;  ; advance next instruction pointer
-;  clr r17
-;  add r_next_l, r16 ; skip #r16 bytes of opbuffer
-;  adc r_next_h, r17
-;  ldi r16, 3
-;  adc r_next_l, r16 ; skip length+lineno
-;  add r_next_h, r17
-;
-;  ; push line number in case we have to report an error
-;  ld r16, X+
-;  push r16
-;  ld r16, X+
-;  push r16
-;
-;  ; statement now at X, execute it
-;  rcall execute_statement
-;
-;  ; pop line number back for error report
-;  pop r17
-;  pop r16
-;
-;  ; error check
-;  tst r_error
-;  breq execute_mainloop
-;
-;  ; error
-;  set ; include line number
-;  rcall handle_error
-;
-;  ; program done!
-;execute_done:
-;  ret
+  ; setup ref to current linemap page (high byte)
+  ldi r21, high(linemap_base)
+
+exec_linemap_load:
+  ; load page #r21 of the linemap
+  clr r16
+  mov r17, r21
+  clr r18
+  rcall ram_read_start
+
+  ldi ZL, low(linemap_buffer)
+  ldi ZH, high(linemap_buffer)
+  clr r16
+  rcall ram_read_bytes
+  rcall ram_end
+
+  ; reset to start of buffer
+  ldi ZL, low(linemap_buffer)
+  ldi ZH, high(linemap_buffer)
+
+  ; walk the linemap, working out what to run next
+
+exec_linemap_next:
+  ; load the line number, just to see if we hit the end of program
+  ld r18, Z+
+  ld r19, Z+
+
+  ; if we reached the end, we're done
+  tst r18
+  brne PC+4
+  tst r19
+  brne PC+2
+
+  ; fell off the end, program done
+  ret
+
+  ; load opmem pointer
+  ld r16, Z+
+  ld r17, Z+
+
+  ; save linemap position
+  push ZL
+  push ZH
+
+  ; save line number, for error reports
+  push r18
+  push r19
+
+  ; set op buffer for read
+  ldi ZL, low(op_buffer)
+  ldi ZH, high(op_buffer)
+
+  ; set up for read
+  clr r18
+  rcall ram_read_start
+
+  ; read the length
+  rcall ram_read_byte
+
+  ; and fill the opbuffer
+  rcall ram_read_bytes
+
+  rcall ram_end
+
+  ; set X to op buffer for execute
+  ldi XL, low(op_buffer)
+  ldi XH, high(op_buffer)
+
+  ; go
+  rcall execute_statement
+
+  ; pop line number back for error report
+  pop r17
+  pop r16
+
+  ; restore linemap pointer
+  pop ZH
+  pop ZL
+
+  ; error check
+  tst r_error
+  breq PC+3
+
+  ; error
+  set ; include line number
+  rjmp handle_error
+
+  ; see if we've gone off the end of the page
+  tst ZL
+  brne exec_linemap_next
+
+  ; yep, load the next page
+  inc r21
+  rjmp exec_linemap_load
 
 
 ; run the statement at X
