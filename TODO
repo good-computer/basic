@@ -7,6 +7,10 @@ memory management:
 
 clearer abstractions:
 - skip whitespace at start/end outside of keyword parsers?
+- lift linemap->opmem loops?
+
+execute mainloop:
+- don't reset external ram position during execute if we know we're in the right spot?
 
 functions:
   INT
