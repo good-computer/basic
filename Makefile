@@ -12,6 +12,6 @@ install: all
 	avra $<
 
 serial:
-	picocom -b 38400 /dev/ttyUSB0
+	picocom -b 38400 -s 'sx -vv' -v 'rx -vv -E' /dev/ttyUSB0
 
 .PHONY: install serial
