@@ -1779,8 +1779,8 @@ parse_var:
   ; found it, take it
   adiw XL, 1
 
-  ; set top bit
-  ori r16, 0x80
+  ; set top bit to mark string type
+  sbr r16, 0x80
 
   ret
 
