@@ -1835,7 +1835,10 @@ exec_linemap_next:
 
   ; save linemap position
   push ZL
-  push ZH
+  push r21
+
+  ; copy linemap position for op (eg gosub)
+  mov r20, ZL
 
   ; save line number, for error reports
   push r18
@@ -1888,6 +1891,10 @@ exec_linemap_next:
 
   ; new target is in r20:r21, reload and go
   rjmp exec_linemap_load
+
+  ; restore linemap page
+  mov r21, ZH
+  ldi ZH, linemap_buffer_h
 
   ; see if we've gone off the end of the page
   tst ZL
@@ -2454,61 +2461,57 @@ op_let_number:
 
 op_gosub:
 
-  sbi PORTB, PB0
-  rjmp PC
+  ; make sure there's room on the gosub stack
+  mov ZL, r_gosub_sp
+  cpi ZL, low(gosub_stack_end+1)
+  brne PC+3
 
-;  ; make sure there's room on the gosub stack
-;  mov ZL, r_gosub_sp
-;  cpi ZL, low(gosub_stack_end+1)
-;  brne PC+3
-;
-;  ldi r_error, error_out_of_memory
-;  ret
-;
-;  ; stack the next line pointer
-;  ldi ZH, high(gosub_stack)
-;  st Z+, r_next_l
-;  st Z+, r_next_h
-;
-;  ; do a normal goto, which will advance r_next_l
-;  rcall op_goto
-;
-;  ; see if goto failed
-;  tst r_error
-;  brne PC+3
-;
-;  ; success, advance the stack pointer
-;  ldi r16, 2
-;  add r_gosub_sp, r16
-;
-;  ret
+  ldi r_error, error_out_of_memory
+  ret
+
+  ; next linemap position in r20:r21, stack it
+
+  ; stack the next line pointer
+  ldi ZH, high(gosub_stack)
+  st Z+, r20
+  st Z+, r21
+
+  ; do a normal goto, which will advance r_next_l
+  rcall op_goto
+
+  ; see if goto failed
+  tst r_error
+  brne PC+3
+
+  ; success, advance the stack pointer
+  ldi r16, 2
+  add r_gosub_sp, r16
+
+  ret
 
 
 op_return:
 
-  sbi PORTB, PB0
-  rjmp PC
+  ; make sure there's something on the gosub stack
+  mov ZL, r_gosub_sp
+  cpi ZL, low(gosub_stack)
+  brne PC+3
 
-;  ; make sure there's something on the gosub stack
-;  mov ZL, r_gosub_sp
-;  cpi ZL, low(gosub_stack)
-;  brne PC+3
-;
-;  ldi r_error, error_return_without_gosub
-;  ret
-;
-;  ; pop the next line pointer
-;  ldi ZH, high(gosub_stack);
-;  ld r_next_h, -Z
-;  ld r_next_l, -Z
-;
-;  ; save the new stack pointer back
-;  mov r_gosub_sp, ZL
-;
-;  ; end line
-;  sbr r_flags, 1<<f_abort_line
-;
-;  ret
+  ldi r_error, error_return_without_gosub
+  ret
+
+  ; pop the next line pointer
+  ldi ZH, high(gosub_stack);
+  ld r21, -Z
+  ld r20, -Z
+
+  ; save the new stack pointer back
+  mov r_gosub_sp, ZL
+
+  ; abort line and trigger jump
+  sbr r_flags, (1<<f_abort_line)|(1<<f_jump)
+
+  ret
 
 
 op_new:
