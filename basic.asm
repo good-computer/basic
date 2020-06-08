@@ -5,42 +5,42 @@
 
 ; XXX I wonder if there's a better way to set up a memory map
 
-; stack 0402-045f
-.equ stack_top        = RAMEND
-.equ stack_bottom     = stack_top - 0x5d
+; input buffer
+.equ input_buffer     = 0x0060
+.equ input_buffer_end = 0x00df
 
-; rng state 0400-0402
-.equ rand_l           = stack_bottom - 2
-.equ rand_h           = rand_l + 1
+; gosub stack
+.equ gosub_stack     = 0x00e0
+.equ gosub_stack_end = 0x00ff
 
-; input buffer 0380-03ff
-.equ input_buffer     = rand_l - 0x80
-.equ input_buffer_end = rand_l - 1
+; location in internal memory for current linemap page (high byte)
+.equ linemap_buffer_h = high(0x100)
 
-; op buffer 0360-037f->
-; allowed to run into the input buffer if necessary, which almost certainly
-; will be ahead during parse
-.equ op_buffer = input_buffer - 0x20
+; variable storage (reverse direction)
+.equ variable_buffer     = 0x037f
+.equ variable_buffer_end = 0x0200
 
-; expression stack 0340-035f
-.equ expr_stack     = op_buffer - 0x20
-.equ expr_stack_end = op_buffer - 1
+; op buffer
+.equ op_buffer = 0x0380
 
-; gosub stack 0330-033f
-.equ gosub_stack     = expr_stack - 0x10
-.equ gosub_stack_end = expr_stack - 1
+; string buffer (temp space for strings being created)
+.equ string_buffer     = 0x03b0
+.equ string_buffer_end = 0x03df
 
-; string buffer (temp space for strings being created) 0310-032f
-.equ string_buffer     = gosub_stack - 0x20
-.equ string_buffer_end = gosub_stack - 1
+; expression stack
+.equ expr_stack     = 0x03e0
+.equ expr_stack_end = 0x03ef
 
-; list of variables <-0x30f (reverse direction)
-.equ variable_buffer     = string_buffer - 1
-.equ variable_buffer_end = SRAM_START
+; rng state
+.equ rand_l = 0x03fe
+.equ rand_h = 0x03ff
 
-; list of program instructions 0060->
-.equ program_buffer     = SRAM_START
-.equ program_buffer_end = gosub_stack - 1
+; stack top
+.equ stack_top = 0x045f
+
+
+
+
 
 
 .equ opmem_base   = 0x0000
@@ -52,8 +52,6 @@
 .equ linemap_base = 0xf000
 .equ linemap_top  = 0x0000
 
-; location in internal memory for current linemap page
-.equ linemap_buffer = 0x0100
 
 
 ; global registers
@@ -472,16 +470,16 @@ find_instruction_location:
   rcall ram_read_start
 
 linemap_load:
-  ldi ZL, low(linemap_buffer)
-  ldi ZH, high(linemap_buffer)
+  clr ZL
+  ldi ZH, linemap_buffer_h
   clr r16
   rcall ram_read_bytes
 
   ; holding ram active, so we can easily load in the next page
 
   ; reset to start of buffer
-  ldi ZL, low(linemap_buffer)
-  ldi ZH, high(linemap_buffer)
+  clr ZL
+  ldi ZH, linemap_buffer_h
 
   ; walk the linemap, looking for the right place to put this
 
@@ -1805,15 +1803,15 @@ exec_linemap_load:
   clr r18
   rcall ram_read_start
 
-  ldi ZL, low(linemap_buffer)
-  ldi ZH, high(linemap_buffer)
+  clr ZL
+  ldi ZH, linemap_buffer_h
   clr r16
   rcall ram_read_bytes
   rcall ram_end
 
   ; reset to start of buffer
-  ldi ZL, low(linemap_buffer)
-  ldi ZH, high(linemap_buffer)
+  clr ZL
+  ldi ZH, linemap_buffer_h
 
   ; walk the linemap, working out what to run next
 
@@ -2547,15 +2545,15 @@ list_linemap_load:
   clr r18
   rcall ram_read_start
 
-  ldi ZL, low(linemap_buffer)
-  ldi ZH, high(linemap_buffer)
+  clr ZL
+  ldi ZH, linemap_buffer_h
   clr r16
   rcall ram_read_bytes
   rcall ram_end
 
   ; reset to start of buffer
-  ldi ZL, low(linemap_buffer)
-  ldi ZH, high(linemap_buffer)
+  clr ZL
+  ldi ZH, linemap_buffer_h
 
   ; walk the linemap, looking for the right place to put this
 
