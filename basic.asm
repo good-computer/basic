@@ -67,6 +67,7 @@
 ; flag bits
 .equ f_immediate  = 0
 .equ f_abort_line = 1
+.equ f_jump       = 2
 
 ; error codes
 .equ error_number_out_of_range  = 1
@@ -1790,10 +1791,12 @@ execute_program:
   ; clear last error
   clr r_error
 
-  ; setup ref to current linemap page (high byte)
+  ; start at start of linemap
+  clr r20
   ldi r21, high(linemap_base)
 
 exec_linemap_load:
+
   ; load page #r21 of the linemap
   clr r16
   mov r17, r21
@@ -1806,8 +1809,8 @@ exec_linemap_load:
   rcall ram_read_bytes
   rcall ram_end
 
-  ; reset to start of buffer
-  clr ZL
+  ; move to wanted position from start or jump
+  mov ZL, r20
   ldi ZH, linemap_buffer_h
 
   ; walk the linemap, working out what to run next
@@ -1858,6 +1861,9 @@ exec_linemap_next:
   ldi XL, low(op_buffer)
   ldi XH, high(op_buffer)
 
+  ; probably won't jump
+  cbr r_flags, (1<<f_jump)
+
   ; go
   rcall execute_statement
 
@@ -1877,12 +1883,19 @@ exec_linemap_next:
   set ; include line number
   rjmp handle_error
 
+  ; if we're doing a jump, then we don't need the normal advance
+  sbrc r_flags, f_jump
+
+  ; new target is in r20:r21, reload and go
+  rjmp exec_linemap_load
+
   ; see if we've gone off the end of the page
   tst ZL
   brne exec_linemap_next
 
   ; yep, load the next page
   inc r21
+  clr r20
   rjmp exec_linemap_load
 
 
@@ -2188,65 +2201,77 @@ comp_match:
 
 op_goto:
 
-  sbi PORTB, PB0
-  rjmp PC
+  rcall eval_expression
+  tst r_error
+  breq PC+2
+  ret
 
-;  rcall eval_expression
-;  tst r_error
-;  breq PC+2
-;  ret
-;
-;  ; target line
-;  movw r4, r16
-;
-;  ; get pointer to start of program buffer
-;  ldi r18, low(program_buffer)
-;  ldi r19, high(program_buffer)
-;
-;op_goto_search_loop:
-;
-;  ; setup to read line
-;  movw YL, r18
-;
-;  ; look for end-of-program marker (length 0)
-;  ld r20, Y+
-;  tst r20
-;  breq op_goto_not_found
-;
-;  ; load line number
-;  ld r16, Y+
-;  ld r17, Y+
-;
-;  cp r4, r16
-;  brne PC+2
-;  cp r5, r17
-;  breq op_goto_found
-;
-;  ; advance to next instruction
-;  clr r21
-;  add r18, r20 ; skip #r20 bytes of opbuffer
-;  adc r19, r21
-;  ldi r20, 3
-;  add r18, r20 ; skip length+lineno
-;  adc r19, r21
-;  rjmp op_goto_search_loop
-;
-;op_goto_found:
-;
-;  ; found it, set the next line pointer for execution to here
-;  movw r_next_l, r18
-;
-;  ; tell executor that line has ended
-;  sbr r_flags, 1<<f_abort_line
-;
-;  ; return from command; mainloop will continue at the line we set
-;  ret
-;
-;op_goto_not_found:
-;
-;  ; abort
-;  ldi r_error, error_no_such_line
-;  ret
+  ; target line
+  movw r4, r16
+
+  ; setup ref to current linemap page (high byte)
+  ldi r21, high(linemap_base)
+
+goto_linemap_load:
+  ; load page #r21 of the linemap
+  clr r16
+  mov r17, r21
+  clr r18
+  rcall ram_read_start
+
+  clr ZL
+  ldi ZH, linemap_buffer_h
+  clr r16
+  rcall ram_read_bytes
+  rcall ram_end
+
+  ; reset to start of buffer
+  clr ZL
+  ldi ZH, linemap_buffer_h
+
+  ; walk the linemap, looking for our line
+
+goto_linemap_next:
+  ; load the line number, just to see if we hit the end of program
+  ld r16, Z+
+  ld r17, Z+
+
+  ; if we reached the end, then it wasn't found
+  tst r16
+  brne PC+5
+  tst r17
+  brne PC+3
+
+  ldi r_error, error_no_such_line
+  ret
+
+  ; compare the line number we're looking for with the current one
+  cp r4, r16
+  cpc r5, r17
+  brne goto_linemap_advance
+
+  ; found! move Z back to start of linemap entry
+  sbiw ZL, 2
+
+  ; linemap offset in extram page #r21 to r20 for mainloop jump
+  mov r20, ZL
+
+  ; abort rest of line and trigger jump
+  sbr r_flags, (1<<f_abort_line)|(1<<f_jump)
+
+  ret
+
+goto_linemap_advance:
+  ; skip opmem pointer
+  adiw ZL, 2
+
+  ; see if we've gone off the end of the page
+  tst ZL
+  brne goto_linemap_next
+
+  ; yep, load the next page
+  inc r21
+  rjmp exec_linemap_load
 
 
 op_input:
