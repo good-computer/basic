@@ -88,7 +88,9 @@
 .equ error_no_such_line         = 15
 .equ error_type_mismatch        = 16
 .equ error_division_by_zero     = 17
-.equ error_break                = 18
+.equ error_invalid_immediate    = 18
+.equ error_invalid_program      = 19
+.equ error_break                = 20
 
 ; expression ops
 .equ expr_op_number   = 1
@@ -341,6 +343,8 @@ error_lookup_table:
   .dw text_error_no_such_line*2
   .dw text_error_type_mismatch*2
   .dw text_error_division_by_zero*2
+  .dw text_error_invalid_immediate*2
+  .dw text_error_invalid_program*2
   .dw text_error_break*2
 
 
@@ -998,25 +1002,36 @@ keyword_table:
       0
 
 keyword_subparser_table:
-  .dw 0                ; 0x00 [reserved]
-  rjmp st_parse_print  ; 0x01 PRINT expr-list
-  rjmp st_parse_if     ; 0x02 IF expression relop expression THEN statement
-  rjmp st_parse_goto   ; 0x03 GOTO expression
-  rjmp st_parse_input  ; 0x04 INPUT var-list
-  rjmp st_parse_let    ; 0x05 LET var = expression
-  rjmp st_parse_goto   ; 0x06 GOSUB expression
-  ret                  ; 0x07 RETURN
-  ret                  ; 0x08 NEW
-  ret                  ; 0x09 CLEAR
-  ret                  ; 0x0a LIST
-  ret                  ; 0x0b RUN
-  ret                  ; 0x0c END
-  ret                  ; 0x0d [ON]
-  ret                  ; 0x0e [OFF]
-  ret                  ; 0x0f [SLEEP]
-  ret                  ; 0x10 [RESET]
-  ret                  ; 0x11 [CLS]
-  ret                  ; 0x12 [RAMTEST]
+  .dw 0                  ; 0x00 [reserved]
+  rjmp st_parse_print    ; 0x01 PRINT expr-list
+  rjmp st_parse_if       ; 0x02 IF expression relop expression THEN statement
+  rjmp st_parse_goto     ; 0x03 GOTO expression
+  rjmp st_parse_input    ; 0x04 INPUT var-list
+  rjmp st_parse_let      ; 0x05 LET var = expression
+  rjmp st_parse_goto     ; 0x06 GOSUB expression
+  rjmp invalid_immediate ; 0x07 RETURN
+  rjmp invalid_program   ; 0x08 NEW
+  rjmp invalid_program   ; 0x09 CLEAR
+  ret                    ; 0x0a LIST
+  rjmp invalid_program   ; 0x0b RUN
+  rjmp invalid_immediate ; 0x0c END
+  ret                    ; 0x0d [ON]
+  ret                    ; 0x0e [OFF]
+  ret                    ; 0x0f [SLEEP]
+  ret                    ; 0x10 [RESET]
+  ret                    ; 0x11 [CLS]
+  ret                    ; 0x12 [RAMTEST]
+
+
+invalid_immediate:
+  sbrs r_flags, f_immediate
+  ldi r_error, error_invalid_immediate
+  ret
+
+invalid_program:
+  sbrc r_flags, f_immediate
+  ldi r_error, error_invalid_program
+  ret
 
 
 st_parse_print:
@@ -1197,6 +1212,12 @@ text_then:
 
 
 st_parse_goto:
+
+  rcall invalid_immediate
+  tst r_error
+  breq PC+2
+  ret
+
   rcall parse_expression
 
   tst r_error
@@ -3872,5 +3893,9 @@ text_error_type_mismatch:
   .db "TYPE MISMATCH", 0
 text_error_division_by_zero:
   .db "DIVISION BY ZERO", 0
+text_error_invalid_immediate:
+  .db "INVALID STATEMENT IN IMMEDIATE MODE", 0
+text_error_invalid_program:
+  .db "INVALID STATEMENT IN PROGRAM", 0
 text_error_break:
   .db "BREAK", 0
