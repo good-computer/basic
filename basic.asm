@@ -1689,6 +1689,10 @@ exec_linemap_load:
   ; walk the linemap, working out what to run next
 
 exec_linemap_next:
+
+  ; get current linemap position into r20:r21, for jumps
+  mov r20, ZL
+
   ; load the line number, just to see if we hit the end of program
   ld r18, Z+
   ld r19, Z+
@@ -1707,11 +1711,8 @@ exec_linemap_next:
   ld r17, Z+
 
   ; save linemap position
-  push ZL
+  push r20
   push r21
-
-  ; copy linemap position for op (eg gosub)
-  mov r20, ZL
 
   ; save line number, for error reports
   push r18
@@ -1772,6 +1773,9 @@ exec_linemap_next:
   ; restore linemap page
   mov r21, ZH
   ldi ZH, linemap_buffer_h
+
+  ; advance
+  adiw ZL, 4
 
   ; see if we've gone off the end of the page
   tst ZL
@@ -2353,7 +2357,7 @@ op_gosub:
   ldi r_error, error_out_of_memory
   ret
 
-  ; next linemap position in r20:r21, stack it
+  ; current linemap position in r20:r21, stack it
 
   ; stack the next line pointer
   ldi ZH, high(gosub_stack)
@@ -2386,11 +2390,15 @@ op_return:
 
   ; pop the next line pointer
   ldi ZH, high(gosub_stack);
-  ld r21, -Z
-  ld r20, -Z
+  ld XH, -Z
+  ld XL, -Z
 
   ; save the new stack pointer back
   mov r_gosub_sp, ZL
+
+  ; saved address was current line at time of GOSUB, we want next, so advance
+  adiw XL, 4
+  mov r20, XL
 
   ; abort line and trigger jump
   sbr r_flags, (1<<f_abort_line)|(1<<f_jump)
