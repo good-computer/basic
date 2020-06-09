@@ -1668,6 +1668,9 @@ execute_program:
   clr r20
   ldi r21, high(linemap_base)
 
+  ; zero offset into instruction
+  ldi r22, low(op_buffer)
+
 exec_linemap_load:
 
   ; load page #r21 of the linemap
@@ -1735,7 +1738,7 @@ exec_linemap_next:
   rcall ram_end
 
   ; set X to op buffer for execute
-  ldi XL, low(op_buffer)
+  mov XL, r22
   ldi XH, high(op_buffer)
 
   ; assume normalcy
@@ -1784,6 +1787,7 @@ exec_linemap_next:
   ; yep, load the next page
   inc r21
   clr r20
+  ldi r22, low(op_buffer)
   rjmp exec_linemap_load
 
 
@@ -1797,6 +1801,15 @@ execute_statement:
   ; opcode at X is offset into the op table
   ld r16, X+
 
+  ; null, line done
+  tst r16
+  brne PC+2
+  ret
+
+  ; ':' is the statement separator, just go again
+  cpi r16, ':'
+  breq execute_statement
+
   ; add op table location
   add ZL, r16
   brcc PC+2
@@ -1805,8 +1818,16 @@ execute_statement:
   ; run line to the end unless told otherwise
   cbr r_flags, 1<<f_abort_line
 
+  ; push linemap position
+  push r20
+  push r21
+
   ; and jump to the handler
   icall
+
+  ; pop linemap position and set it aside
+  pop ZH
+  pop ZL
 
   ; error check and abort
   tst r_error
@@ -1825,15 +1846,10 @@ execute_statement:
   sbrc r_flags, f_abort_line
   ret
 
-  ; look for statement terminator
-  ld r16, X+
+  ; nope, restore linemap position for next statement
+  movw r20, ZL
 
-  ; null, we're done
-  tst r16
-  brne PC+2
-  ret
-
-  ; anything else (':'), there's another statement!
+  ; and round we go!
   rjmp execute_statement
 
 
@@ -2145,6 +2161,9 @@ goto_linemap_next:
   ; linemap offset in extram page #r21 to r20 for mainloop jump
   mov r20, ZL
 
+  ; start of op buffer
+  ldi r22, low(op_buffer);
+
   ; abort rest of line and trigger jump
   sbr r_flags, (1<<f_abort_line)|(1<<f_jump)
 
@@ -2357,23 +2376,24 @@ op_gosub:
   ldi r_error, error_out_of_memory
   ret
 
-  ; current linemap position in r20:r21, stack it
-
-  ; stack the next line pointer
+  ; stack the current line pointer
   ldi ZH, high(gosub_stack)
   st Z+, r20
   st Z+, r21
+  mov r_gosub_sp, ZL
 
-  ; do a normal goto, which will advance r_next_l
+  ; do a normal goto, which will consume the rest of the command
   rcall op_goto
 
   ; see if goto failed
   tst r_error
   brne PC+3
 
-  ; success, advance the stack pointer
-  ldi r16, 2
-  add r_gosub_sp, r16
+  ; success. need to stack the new offset
+  mov ZL, r_gosub_sp
+  ldi ZH, high(gosub_stack)
+  st Z+, XL
+  mov r_gosub_sp, ZL
 
   ret
 
@@ -2390,15 +2410,12 @@ op_return:
 
   ; pop the next line pointer
   ldi ZH, high(gosub_stack);
-  ld XH, -Z
-  ld XL, -Z
+  ld r22, -Z
+  ld r21, -Z
+  ld r20, -Z
 
   ; save the new stack pointer back
   mov r_gosub_sp, ZL
-
-  ; saved address was current line at time of GOSUB, we want next, so advance
-  adiw XL, 4
-  mov r20, XL
 
   ; abort line and trigger jump
   sbr r_flags, (1<<f_abort_line)|(1<<f_jump)
