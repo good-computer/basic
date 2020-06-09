@@ -47,10 +47,8 @@
 .equ stack_top = 0x045f
 
 
-
-
-
-
+; location in external memory of op lists
+; long list of length, ops, pointed at by the linemap
 .equ opmem_base   = 0x0000
 .equ opmem_top    = 0xefff
 
@@ -59,7 +57,6 @@
 ; only high byte gets considered, so must be on an even page boundary
 .equ linemap_base = 0xf000
 .equ linemap_top  = 0x0000
-
 
 
 ; global registers
