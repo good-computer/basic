@@ -1039,6 +1039,9 @@ st_parse_let:
 
   st Y+, r16
 
+  ; set aside var for type check later
+  push r16
+
   rcall skip_whitespace
 
   ; skip the =
@@ -1050,12 +1053,25 @@ st_parse_let:
   rcall skip_whitespace
 
   rcall parse_expression
+  pop r17
+
   tst r_error
   breq PC+2
   ret
 
   brts PC+2
   ldi r_error, error_expected_expression
+
+  ; consider type. var bit 7 and expr parse return bit 0s
+  ; must be both set (string) or both clear (number)
+  andi r17, 0x80
+  or r17, r16
+  tst r17
+  breq PC+4
+  cpi r17, 0x81
+  breq PC+2
+
+  ldi r_error, error_type_mismatch
 
   ret
 
