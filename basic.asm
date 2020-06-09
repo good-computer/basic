@@ -17,8 +17,12 @@
 .equ linemap_buffer_h = high(0x100)
 
 ; variable storage (reverse direction)
-.equ variable_buffer     = 0x037f
+.equ variable_buffer     = 0x0367
 .equ variable_buffer_end = 0x0200
+
+; for/next state
+.equ for_buffer     = 0x368
+.equ for_buffer_end = 0x37f
 
 ; op buffer
 .equ op_buffer = 0x0380
@@ -2425,8 +2429,74 @@ op_return:
 
 op_for:
 
-  sbi PORTB, PB0
-  rjmp PC
+  ; get variable name and set it aside
+  ld r16, X
+  push r16
+
+  ; set up var with LET
+  rcall op_let
+
+  ; error check on LET
+  tst r_error
+  breq PC+3
+  pop r16
+  ret
+
+  ; evaluate target expression
+  rcall eval_expression
+
+  ; get name back
+  pop r18
+
+  ; eval error?
+  tst r_error
+  breq PC+2
+  ret
+
+  ; now need to find an empty loop slot
+
+  ; start
+  ldi ZL, low(for_buffer)
+  ldi ZH, high(for_buffer)
+
+  ; end of buffer, to look for overruns
+  ldi YL, low(for_buffer_end)
+  ldi YH, high(for_buffer_end)
+
+for_try_slot:
+  ; get slot var
+  ld r19, Z
+  tst r19       ; empty?
+  breq for_take_slot
+  cp r19, r18   ; same name?
+  breq for_take_slot
+
+  adiw ZL, 6
+
+  ; did we go past the end?
+  cp ZL, YL
+  cpc ZH, YH
+  brlo for_try_slot
+
+  ; aww
+  ldi r_error, error_out_of_memory
+  ret
+
+for_take_slot:
+
+  ; store var name
+  st Z+, r18
+
+  ; store target value
+  st Z+, r16
+  st Z+, r17
+
+  ; store return jump position
+  st Z+, r20
+  st Z+, r21
+  st Z+, XL
+
+  ret
 
 
 op_next:
@@ -2466,6 +2536,17 @@ op_new:
 
 
 op_clear:
+
+  ; clear for buffer
+  ldi ZL, low(for_buffer)
+  ldi ZH, high(for_buffer)
+  clr r16
+  st Z+, r16
+  cpi ZL, low(for_buffer_end+1)
+  brne PC-2
+  cpi ZH, high(for_buffer_end+1)
+  brne PC-4
+
   ; clear gosub stack
   ldi r16, low(gosub_stack)
   mov r_gosub_sp, r16
