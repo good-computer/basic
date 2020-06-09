@@ -178,7 +178,6 @@ reset:
 
   ; enable SPI, master mode, clock rate fck/4 (4MHz)
   ldi r16, (1<<SPE) | (1<<MSTR)
-  ; enable SPI, master mode, clock rate fck/128
   out SPCR, r16
   ; SPI clock double (8MHz)
   ldi r16, (1<<SPI2X)
