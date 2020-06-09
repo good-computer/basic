@@ -2271,6 +2271,13 @@ op_let:
 
   ; get name back
   pop r18
+
+  ; eval error?
+  tst r_error
+  breq PC+2
+  ret
+
+  ; save the name again before we trample it
   mov r19, r18
 
   ; consider type. var bit 7 and T must be both set (string) or both clear (number)
