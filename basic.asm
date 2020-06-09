@@ -2315,14 +2315,13 @@ op_let_string:
 
 op_let_number:
 
-  ; setup a storage buffer for the value
-  ldi ZL, low(input_buffer)
-  ldi ZH, high(input_buffer)
-
   ; push number
   sts input_buffer,   r16
   sts input_buffer+1, r17
 
+  ; ready call to set variable
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
   mov r16, r19
   ldi r17, 0x2
 
