@@ -83,14 +83,15 @@
 .equ error_unterminated_string  = 10
 .equ error_return_without_gosub = 11
 .equ error_if_without_then      = 12
-.equ error_out_of_memory        = 13
-.equ error_overflow             = 14
-.equ error_no_such_line         = 15
-.equ error_type_mismatch        = 16
-.equ error_division_by_zero     = 17
-.equ error_invalid_immediate    = 18
-.equ error_invalid_program      = 19
-.equ error_break                = 20
+.equ error_for_without_to       = 13
+.equ error_out_of_memory        = 14
+.equ error_overflow             = 15
+.equ error_no_such_line         = 16
+.equ error_type_mismatch        = 17
+.equ error_division_by_zero     = 18
+.equ error_invalid_immediate    = 19
+.equ error_invalid_program      = 20
+.equ error_break                = 21
 
 ; expression ops
 .equ expr_op_number   = 1
@@ -303,6 +304,7 @@ error_lookup_table:
   .dw text_error_unterminated_string*2
   .dw text_error_return_without_gosub*2
   .dw text_error_if_without_then*2
+  .dw text_error_for_without_to*2
   .dw text_error_out_of_memory*2
   .dw text_error_overflow*2
   .dw text_error_no_such_line*2
@@ -1078,14 +1080,75 @@ st_parse_let:
 
 st_parse_for:
 
-  sbi PORTB, PB0
-  rjmp PC
+  ; starts off like LET
+  rcall st_parse_let
+  tst r_error
+  breq PC+2
+  ret
+
+  ; r16 still set with last call to parse_expression in LET, so can check numberness
+  tst r16
+  breq PC+3
+
+  ldi r_error, error_type_mismatch
+  ret
+
+  rcall skip_whitespace
+
+  ; TO sigh
+  ld r16, X+
+  cpi r16, 'T'
+  brne PC+4
+  ld r16, X+
+  cpi r16, 'O'
+  breq PC+3
+
+  ldi r_error, error_for_without_to
+  ret
+
+  rcall skip_whitespace
+
+  ; target expression
+  rcall parse_expression
+  tst r_error
+  breq PC+2
+  ret
+
+  brts PC+3
+  ldi r_error, error_expected_expression
+  ret
+
+  ; has to be numbery too
+  tst r16
+  breq PC+2
+  ldi r_error, error_type_mismatch
+
+  ret
 
 
 st_parse_next:
 
-  sbi PORTB, PB0
-  rjmp PC
+  ; find a variable name
+  rcall parse_var
+  tst r_error
+  breq PC+2
+  ret
+  brts PC+3
+
+  ldi r_error, error_expected_variable
+  ret
+
+  ; require number
+  tst r16
+  brpl PC+3
+
+  ldi r_error, error_type_mismatch
+  ret
+
+  ; store its name
+  st Y+, r16
+
+  ret
 
 
 ; parse an expression into the opbuffer
@@ -3628,6 +3691,8 @@ text_error_return_without_gosub:
   .db "RETURN WITHOUT GOSUB", 0
 text_error_if_without_then:
   .db "IF WITHOUT THEN", 0
+text_error_for_without_to:
+  .db "FOR WITHOUT TO", 0
 text_error_out_of_memory:
   .db "OUT OF MEMORY", 0
 text_error_overflow:
