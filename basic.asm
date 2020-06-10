@@ -412,7 +412,7 @@ find_instruction_location:
   lds r16, r_opmem_top_l
   lds r17, r_opmem_top_h
   movw XL, r16 ; save for further down
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_write_start
 
   ; write length
@@ -441,7 +441,7 @@ find_instruction_location:
   clr r16
   mov r17, r20
   ldi r17, high(linemap_base)
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_read_start
 
 linemap_load:
@@ -526,7 +526,7 @@ append_line:
   ; prep for ram write; low byte is from Z, high byte from current page
   mov r16, ZL
   mov r17, r20
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_write_start
 
   ; write line number
@@ -1676,7 +1676,7 @@ exec_linemap_load:
   ; load page #r21 of the linemap
   clr r16
   mov r17, r21
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_read_start
 
   clr ZL
@@ -1726,7 +1726,7 @@ exec_linemap_next:
   ldi ZH, high(op_buffer)
 
   ; set up for read
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_read_start
 
   ; read the length
@@ -2121,7 +2121,7 @@ goto_linemap_load:
   ; load page #r21 of the linemap
   clr r16
   mov r17, r21
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_read_start
 
   clr ZL
@@ -2503,7 +2503,7 @@ op_next:
 
 op_new:
 
-  ; reset opmem and linemap
+  ; reset opmem
   ldi r16, low(opmem_base)
   ldi r17, high(opmem_base)
   sts r_opmem_top_l, r16
@@ -2512,7 +2512,7 @@ op_new:
   ; zero linemap in external ram
   clr r16
   ldi r17, high(linemap_base)
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_write_start
   clr r16
   clr r17
@@ -2565,7 +2565,7 @@ list_linemap_load:
   ; load page #r21 of the linemap
   clr r16
   mov r17, r21
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_read_start
 
   clr ZL
@@ -2621,7 +2621,7 @@ list_linemap_next:
 
   ; load opmem into buffer
   movw r16, r4
-  clr r18
+  ldi r18, 0x0 ; bank 0
   rcall ram_read_start
 
   ; read length
