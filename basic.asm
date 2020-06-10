@@ -453,7 +453,6 @@ find_instruction_location:
   ; load the first page of the linemap
   clr r16
   mov r17, r20
-  ldi r17, high(linemap_base)
   ldi r18, 0x0 ; bank 0
   rcall ram_read_start
 
