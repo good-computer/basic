@@ -36,8 +36,10 @@
 .equ expr_stack_end = 0x03ef
 
 ; external ram tracking
-.equ r_opmem_top_l   = 0x03fc ; top of opmem (position of next instruction)
-.equ r_opmem_top_h   = 0x03fd
+.equ r_opmem_top_l   = 0x03fa ; top of opmem (position of next instruction)
+.equ r_opmem_top_h   = 0x03fb
+.equ r_varmem_top_l  = 0x03fc ; top of varmem (position of next value)
+.equ r_varmem_top_h  = 0x03fd
 
 ; rng state
 .equ rand_l = 0x03fe
@@ -47,15 +49,26 @@
 .equ stack_top = 0x045f
 
 
-; location in external memory of op lists
+; location in external memory of op lists (bank 0)
 ; long list of length, ops, pointed at by the linemap
 .equ opmem_base   = 0x0000
 
-; location in external memory of linemap
+; location in external memory of linemap (bank 0)
 ; map of line number (2 bytes) -> pointer to op buffer (2 bytes)
 ; only high byte gets considered, so must be on an even page boundary
 .equ linemap_base = 0xf000
 .equ linemap_top  = 0x0000
+
+
+; location in external memory of var values (bank 1)
+; just the raw values, pointed at by the varmap
+.equ varmem_base = 0x0000
+
+; location in external memory of the var map (bank 1)
+; array of variable name (1 byte), value length (1 byte), pointer to varmem (2 bytes)
+; only high byte gets considered, so must be on an even page boundary
+.equ varmap_base = 0xf000
+.equ varmap_top  = 0x0000
 
 
 ; global registers
@@ -2509,6 +2522,12 @@ op_new:
   sts r_opmem_top_l, r16
   sts r_opmem_top_h, r17
 
+  ; reset varmem
+  ldi r16, low(varmem_base)
+  ldi r17, high(varmem_base)
+  sts r_varmem_top_l, r16
+  sts r_varmem_top_h, r17
+
   ; zero linemap in external ram
   clr r16
   ldi r17, high(linemap_base)
@@ -2532,6 +2551,16 @@ op_new:
 
 
 op_clear:
+
+  ; zero varmap in external ram
+  clr r16
+  ldi r17, high(varmap_base)
+  ldi r18, 0x1 ; bank 1
+  rcall ram_write_start
+  clr r16
+  clr r17
+  rcall ram_write_pair
+  rcall ram_end
 
   ; clear for buffer
   ldi ZL, low(for_buffer)
