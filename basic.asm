@@ -50,7 +50,6 @@
 ; location in external memory of op lists
 ; long list of length, ops, pointed at by the linemap
 .equ opmem_base   = 0x0000
-.equ opmem_top    = 0xefff
 
 ; location in external memory of linemap
 ; map of line number (2 bytes) -> pointer to op buffer (2 bytes)
@@ -409,6 +408,7 @@ find_instruction_location:
   sub r23, r16
 
   ; set to write opbuffer out to opmem
+  ; XXX check if there's opmem room
   lds r16, r_opmem_top_l
   lds r17, r_opmem_top_h
   movw XL, r16 ; save for further down
