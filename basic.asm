@@ -15,10 +15,8 @@
 
 ; location in internal memory for current linemap page (high byte)
 .equ linemap_buffer_h = high(0x100)
-
-; variable storage (reverse direction)
-.equ variable_buffer     = 0x0367
-.equ variable_buffer_end = 0x0200
+; same for current varmap page
+.equ varmap_buffer_h = high(0x200)
 
 ; for/next state
 .equ for_buffer     = 0x368
@@ -2521,12 +2519,6 @@ op_new:
   sts r_opmem_top_l, r16
   sts r_opmem_top_h, r17
 
-  ; reset varmem
-  ldi r16, low(varmem_base)
-  ldi r17, high(varmem_base)
-  sts r_varmem_top_l, r16
-  sts r_varmem_top_h, r17
-
   ; zero linemap in external ram
   clr r16
   ldi r17, high(linemap_base)
@@ -2551,14 +2543,19 @@ op_new:
 
 op_clear:
 
+  ; reset varmem
+  ldi r16, low(varmem_base)
+  ldi r17, high(varmem_base)
+  sts r_varmem_top_l, r16
+  sts r_varmem_top_h, r17
+
   ; zero varmap in external ram
   clr r16
   ldi r17, high(varmap_base)
   ldi r18, 0x1 ; bank 1
   rcall ram_write_start
   clr r16
-  clr r17
-  rcall ram_write_pair
+  rcall ram_write_byte
   rcall ram_end
 
   ; clear for buffer
@@ -2574,10 +2571,6 @@ op_clear:
   ; clear gosub stack
   ldi r16, low(gosub_stack)
   mov r_gosub_sp, r16
-
-  ; clear variable space
-  clr r16
-  sts variable_buffer, r16
 
   ret
 
@@ -2847,69 +2840,72 @@ eval_op_string:
 
 eval_op_variable:
 
-  ; wanted name
-  ld r16, X+
+  sbi PORTB, PB0
+  rjmp PC
 
-  ; set number/string mode
-  bst r16, 7
-  brts PC+3
-  sbr r21, 0x2
-  rjmp PC+2
-  sbr r21, 0x4
-
-  ; setup pointer to first variable
-  ldi ZL, low(variable_buffer)
-  ldi ZH, high(variable_buffer)
-
-eval_try_var:
-  ; load the length
-  ld r18, Z
-
-  ; look for end-of-variable marker
-  tst r18
-  brne PC+5
-
-  ; unknown vars yield a 0
-  clr r16
-  st Y+, r16
-  st Y+, r16
-
-  ret
-
-  ; get name
-  ld r17, -Z
-
-  ; compare
-  cp r16, r17
-  breq eval_found_var
-
-  ; not this one, try next. take the name
-  sbiw ZL, 1
-
-  ; skip #r18 bytes of value
-  sub ZL, r18
-  brcc eval_try_var
-  dec ZH
-  rjmp eval_try_var
-
-eval_found_var:
-
-  bst r21, 1
-  brts eval_push_numeric_var
-
-  ; string expression
-  sbr r21, 0x4
-
-  ; pull Z back to start of string (#r18 bytes back)
-  sub ZL, r18
-  brcc PC+2
-  dec ZH
-
-  ; push pointer to string in variable
-  st Y+, ZL
-  st Y+, ZH
-
-  ret
+;  ; wanted name
+;  ld r16, X+
+;
+;  ; set number/string mode
+;  bst r16, 7
+;  brts PC+3
+;  sbr r21, 0x2
+;  rjmp PC+2
+;  sbr r21, 0x4
+;
+;  ; setup pointer to first variable
+;  ldi ZL, low(variable_buffer)
+;  ldi ZH, high(variable_buffer)
+;
+;eval_try_var:
+;  ; load the length
+;  ld r18, Z
+;
+;  ; look for end-of-variable marker
+;  tst r18
+;  brne PC+5
+;
+;  ; unknown vars yield a 0
+;  clr r16
+;  st Y+, r16
+;  st Y+, r16
+;
+;  ret
+;
+;  ; get name
+;  ld r17, -Z
+;
+;  ; compare
+;  cp r16, r17
+;  breq eval_found_var
+;
+;  ; not this one, try next. take the name
+;  sbiw ZL, 1
+;
+;  ; skip #r18 bytes of value
+;  sub ZL, r18
+;  brcc eval_try_var
+;  dec ZH
+;  rjmp eval_try_var
+;
+;eval_found_var:
+;
+;  bst r21, 1
+;  brts eval_push_numeric_var
+;
+;  ; string expression
+;  sbr r21, 0x4
+;
+;  ; pull Z back to start of string (#r18 bytes back)
+;  sub ZL, r18
+;  brcc PC+2
+;  dec ZH
+;
+;  ; push pointer to string in variable
+;  st Y+, ZL
+;  st Y+, ZH
+;
+;  ret
 
 eval_push_numeric_var:
 
@@ -3223,145 +3219,169 @@ eval_op_rnd:
 ;   Z: value data
 set_variable:
 
-  ; setup pointer to first variable
-  ldi YL, low(variable_buffer)
-  ldi YH, high(variable_buffer)
+  ; put args somewhere useful and out of the way
+  movw r2, r16
+  movw r4, ZL
 
-consider_variable:
+  ; setup ref to current varmap page (high byte)
+  ldi r20, high(varmap_base)
 
-  ; load the length
-  ld r19, Y
+  ; set up for first varmap page
+  clr r16
+  mov r17, r20
+  ldi r18, 0x1 ; bank 1
+  rcall ram_read_start
 
-  ; look for end-of-variable marker
-  tst r19
+varmap_load:
+  clr ZL
+  ldi ZH, varmap_buffer_h
+  clr r16
+  rcall ram_read_bytes
+
+  ; holding ram active, so we can easily load in the next page
+
+  ; reset to start of buffer
+  clr ZL
+  ldi ZH, varmap_buffer_h
+
+  ; walk the varmap, looking for the right place to put this
+
+varmap_next:
+  ; load the variable name
+  ld r16, Z
+
+  ; if we've found the last slot, then this is where we put it
+  tst r16
   breq append_variable
 
-  ; load the name
-  ld r18, -Y
-
-  ; compare
-  cp r18, r16
-
-  ; if its the same name, we're replacing it
+  ; same var name, we're replacing it
+  cp r16, r2
   breq replace_variable
 
-  ; not this one, need to try next. take the name
-  sbiw YL, 1
+  ; not interesting, need to move along
 
-  ; skip #r19 bytes of value
-  sub YL, r19
-  brcc consider_variable
-  dec YH
-  rjmp consider_variable
+  ; advancing, skip forward
+  adiw ZL, 4
+
+  ; see if we've gone off the end of the page
+  tst ZL
+  brne varmap_next
+
+  ; did, next page
+  inc r20
+  rjmp varmap_load
 
 append_variable:
 
-  ; calculate new end pointer, make sure we have room
-  movw XL, YL
-  sbiw XL, 1
-  sub XL, r17
-  brcc PC+2
-  dec XH
+  ; flag that we want:
+  ; - end-of-varmap marker (0x1)
+  ; - advance varmem_top   (0x2)
+  ldi r21, 0x3
 
-  ; see if we've gone past the end
-  ldi r19, low(variable_buffer_end+1)
-  ldi r20, high(variable_buffer_end+1)
-  cp r19, XL
-  cpc r20, XH
-  brlo PC+3
-
-  ; aww
-  ldi r_error, error_out_of_memory
-  ret
-
-  ; last variable
-  set
+  ; will store at top of varmem
+  lds XL, r_varmem_top_l
+  lds XH, r_varmem_top_h
 
   rjmp store_variable
 
 replace_variable:
 
-  ; gonna reuse slot, so back Y up to the start
-  adiw YL, 1
+  ; no additional work
+  clr r21
 
-  ; by default
-  clt
+  ; get existing length
+  adiw ZL, 1
+  ld r16, Z+
 
-  ; see if size matches; if it does, we can just reuse it
-  cp r17, r19
-  brne PC+3
+  ; if we're storing the same amount of stuff, then we can write at the same position
+  cp r16, r3
+  breq replace_variable_overwrite
 
-  ; reusing slot
-  clt
+  ; flag that we need to advance varmem_top (0x2)
+  ldi r21, 0x2
+
+  ; otherwise, storing new value
+  lds XL, r_varmem_top_l
+  lds XH, r_varmem_top_h
+
+  ; move Z back to start of slot
+  sbiw ZL, 2
+
   rjmp store_variable
 
-  ; close this slot
+replace_variable_overwrite:
+  ; same position
+  ld XL, Z+
+  ld XH, Z+
 
-  push YL
-  push YH
-
-  ; find start of next slot
-  movw XL, YL
-  sbiw XL, 2 ; overhead
-  sub XL, r19
-  brcc PC+2
-  dec XH
-
-  ; predec, so advance
-  adiw XL, 1
-  adiw YL, 1
-
-  ; move X->Y
-  ld r18, -X
-  st -Y, r18
-  dec r19
-  brpl PC-3
-
-  pop YH
-  pop YL
-
-  rjmp consider_variable
+  ; move Z back to start of slot
+  sbiw ZL, 4
 
 store_variable:
+  ; finish read
+  rcall ram_end
 
-  ; Y at start of variable space
+  ; if we're at the last entry of the varmap page, then we can't add any more
+  cpi r20, high(varmap_top-1)
+  brne PC+5
+  cpi ZL, 0xfc
+  brne PC+3
 
-  ; store length
-  st Y, r17
-
-  ; store name
-  st -Y, r16
-
-  ; move to start of value storage
-  sub YL, r17
-  brcc PC+2
-  dec YH
-
-  ; save position, since we're about to drive forward
-  push YL
-  push YH
-
-  ; copy #r17 bytes from Z -> Y
-  ld r16, Z+
-  st Y+, r16
-  dec r17
-  brne PC-3
-
-  ; return position and advance
-  pop YH
-  pop YL
-
-  brts store_end_of_variables
+  ldi r_error, error_out_of_memory
   ret
 
-store_end_of_variables:
+  ; prep for ram write; low byte is from Z, high byte from current page
+  mov r16, ZL
+  mov r17, r20
+  ldi r18, 0x1 ; bank 1
+  rcall ram_write_start
 
-  ; store end marker
+  ; write var name and length
+  movw r16, r2
+  rcall ram_write_pair
+
+  ; write varmem pointer
+  movw r16, XL
+  rcall ram_write_pair
+
+  ; write end-of-varmap marker?
+  sbrs r21, 0
+  rjmp store_value
+
+  ; write it
   clr r16
-  st -Y, r16
+  rcall ram_write_byte
 
+store_value:
+  ; done writing varmap
+  rcall ram_end
+
+  ; set up for value write
+  movw r16, XL
+  ldi r18, 0x1 ; bank 1
+  rcall ram_write_start
+
+  ; and write the value
+  movw ZL, r4
+  mov r16, r3
+  rcall ram_write_bytes
+
+  rcall ram_end
+
+  ; advance varmem top?
+  sbrs r21, 1
   ret
 
+  ; advance varmem pointer past value length
+  add XL, r3
+  brcc PC+2
+  inc XH
+
+  ; store it
+  sts r_varmem_top_l, XL
+  sts r_varmem_top_h, XH
+
+  ret
 
 
 blink_forever:
