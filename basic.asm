@@ -28,10 +28,6 @@
 ; same for current varmap page
 .equ varmap_buffer_h = high(0x200)
 
-; for/next state
-.equ for_buffer     = 0x368
-.equ for_buffer_end = 0x37f
-
 ; string buffer (temp space for strings being created)
 .equ string_buffer     = 0x0300
 .equ string_buffer_end = 0x03af
@@ -42,6 +38,10 @@
 ; gosub stack
 .equ gosub_stack     = 0x03e0
 .equ gosub_stack_end = 0x03ff
+
+; for/next state
+.equ for_buffer     = 0x400
+.equ for_buffer_end = 0x41f
 
 ; stack top
 .equ stack_top = 0x045f
@@ -95,14 +95,15 @@
 .equ error_return_without_gosub = 11
 .equ error_if_without_then      = 12
 .equ error_for_without_to       = 13
-.equ error_out_of_memory        = 14
-.equ error_overflow             = 15
-.equ error_no_such_line         = 16
-.equ error_type_mismatch        = 17
-.equ error_division_by_zero     = 18
-.equ error_invalid_immediate    = 19
-.equ error_invalid_program      = 20
-.equ error_break                = 21
+.equ error_next_without_for     = 14
+.equ error_out_of_memory        = 15
+.equ error_overflow             = 16
+.equ error_no_such_line         = 17
+.equ error_type_mismatch        = 18
+.equ error_division_by_zero     = 19
+.equ error_invalid_immediate    = 20
+.equ error_invalid_program      = 21
+.equ error_break                = 22
 
 ; expression ops
 .equ expr_op_number   = 1
@@ -315,6 +316,7 @@ error_lookup_table:
   .dw text_error_return_without_gosub*2
   .dw text_error_if_without_then*2
   .dw text_error_for_without_to*2
+  .dw text_error_next_without_for*2
   .dw text_error_out_of_memory*2
   .dw text_error_overflow*2
   .dw text_error_no_such_line*2
@@ -2439,17 +2441,27 @@ op_for:
   ld r16, X
   push r16
 
+  ; save return loc regs
+  push r20
+  push r21
+
   ; set up var with LET
   rcall op_let
 
   ; error check on LET
   tst r_error
-  breq PC+3
+  breq PC+5
+  pop r21
+  pop r20
   pop r16
   ret
 
   ; evaluate target expression
   rcall eval_expression
+
+  ; restore return regs
+  pop r21
+  pop r20
 
   ; get name back
   pop r18
@@ -2507,8 +2519,149 @@ for_take_slot:
 
 op_next:
 
-  sbi PORTB, PB0
-  rjmp PC
+  ; get variable name
+  ld r20, X+
+
+  ldi ZL, low(for_buffer)
+  ldi ZH, high(for_buffer)
+
+  ; end of buffer, to look for overruns
+  ldi YL, low(for_buffer_end)
+  ldi YH, high(for_buffer_end)
+
+next_try_slot:
+  ; get slot var
+  ld r16, Z
+  cp r16, r20   ; same name?
+  breq next_found_slot
+
+  adiw ZL, 6
+
+  ; did we go past the end?
+  cp ZL, YL
+  cpc ZH, YH
+  brlo next_try_slot
+
+  ; not found
+  ldi r_error, error_next_without_for
+  ret
+
+next_found_slot:
+
+  ; set the slot pointer aside
+  movw r2, ZL
+
+  ; set up for first varmap page
+  clr r16
+  ldi r17, high(varmap_base)
+  ldi r18, 0x1 ; bank 1
+  rcall ram_read_start
+
+next_varmap_load:
+  clr ZL
+  ldi ZH, varmap_buffer_h
+  clr r16
+  rcall ram_read_bytes
+
+  ; holding ram active, so we can easily load in the next page
+
+  ; reset to start of buffer
+  clr ZL
+  ldi ZH, varmap_buffer_h
+
+  ; walk the varmap, looking for our var
+
+next_varmap_next:
+  ; load the variable name
+  ld r16, Z+
+
+  ; found it? go work on it
+  cp r16, r20
+  breq next_found_var
+
+  ; not found, advancing
+  adiw ZL, 3
+
+  ; see if we've gone off the end of the page
+  tst ZL
+  brne next_varmap_next
+
+  ; did, next page
+  inc r17
+  rjmp next_varmap_load
+
+next_found_var:
+  rcall ram_end
+
+  ; get length
+  ld r19, Z+
+
+  ; prep varmem read
+  ld r16, Z+
+  ld r17, Z+
+  movw r8, r16
+  ldi r18, 0x1 ; bank 1
+  rcall ram_read_start
+
+  ; read current value
+  rcall ram_read_pair
+
+  rcall ram_end
+
+  ; bump it
+  inc r16
+  brne PC+2
+  inc r17
+
+  ; set it aside
+  movw r10, r16
+
+  ; prep varmem write
+  movw r16, r8
+  ldi r18, 0x1 ; bank 1
+  rcall ram_write_start
+
+  ; write back out
+  movw r16, r10
+  rcall ram_write_pair
+
+  rcall ram_end
+
+  ; ok, we've incremented the variable! now to figure out if we passed the condition
+
+  ; bring back the for slot pointer
+  movw ZL, r2
+
+  ; skip the var name
+  adiw ZL, 1
+
+  ; load the target
+  ld r18, Z+
+  ld r19, Z+
+
+  ; current value is in r10:r11. compare with r18:r19, see if we've gone past it
+  cp r18, r10
+  cpc r19, r11
+  brsh next_jump
+
+  ; done, clear the slot
+  sbiw ZL, 3
+  clr r16
+  st Z, r16
+
+  ; and finish up
+  ret
+
+next_jump:
+  ; not there yet, need to jump!
+  ld r20, Z+
+  ld r21, Z+
+  ld r22, Z+
+
+  ; abort line and trigger jump
+  sbr r_flags, (1<<f_abort_line)|(1<<f_jump)
+
+  ret
 
 
 op_new:
@@ -3809,6 +3962,19 @@ ram_read_byte:
   in r16, SPDR
   ret
 
+; read two bytes from SRAM, previously set up with ram_read_start
+;   r16:r17: byte pair read
+ram_read_pair:
+  out SPDR, r16
+  sbis SPSR, SPIF
+  rjmp PC-1
+  in r16, SPDR
+  out SPDR, r17
+  sbis SPSR, SPIF
+  rjmp PC-1
+  in r17, SPDR
+  ret
+
 ; write stuff to SRAM, previously set up with ram_write_start
 ;   r16: number of bytes to write
 ;   Z: pointer to stuff to write
@@ -3883,6 +4049,8 @@ text_error_if_without_then:
   .db "IF WITHOUT THEN", 0
 text_error_for_without_to:
   .db "FOR WITHOUT TO", 0
+text_error_next_without_for:
+  .db "NEXT WITHOUT FOR", 0
 text_error_out_of_memory:
   .db "OUT OF MEMORY", 0
 text_error_overflow:
