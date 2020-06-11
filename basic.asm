@@ -2872,7 +2872,7 @@ eval_varmap_load:
 
 eval_varmap_next:
   ; load the variable name
-  ld r16, Z
+  ld r16, Z+
 
   ; reached the end?
   tst r16
@@ -2891,7 +2891,7 @@ eval_varmap_next:
   breq eval_found_var
 
   ; not found, advancing
-  adiw ZL, 4
+  adiw ZL, 3
 
   ; see if we've gone off the end of the page
   tst ZL
@@ -2903,9 +2903,6 @@ eval_varmap_next:
 
 eval_found_var:
   rcall ram_end
-
-  ; take the varname
-  adiw ZL, 1
 
   ; get length
   ld r19, Z+
