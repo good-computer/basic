@@ -3641,9 +3641,21 @@ usart_tx_byte_hex:
 ;   r16:r17: number of bytes to transmit
 usart_tx_bytes_hex:
   movw r18, r16
-  ldi r20, 0x10
+  clr r20
 
-usart_tx_bytes_hex_start_line:
+usart_tx_bytes_hex_next:
+  tst r18
+  brne PC+3
+  tst r19
+  breq usart_tx_bytes_hex_done
+
+  subi r18, 1
+  brcc PC+2
+  dec r19
+
+  tst r20
+  brne PC+8
+
   mov r16, ZH
   rcall usart_tx_byte_hex
   mov r16, ZL
@@ -3652,31 +3664,25 @@ usart_tx_bytes_hex_start_line:
   rcall usart_tx_byte
   rcall usart_tx_byte
 
-usart_tx_bytes_hex_next:
   ld r16, Z+
   rcall usart_tx_byte_hex
 
-  dec r18
-  brne PC+4
-  tst r19
-  breq usart_tx_bytes_hex_done
-  dec r19
-
-  dec r20
+  inc r20
+  cpi r20, 0x10
   breq PC+4
 
   ldi r16, ' '
   rcall usart_tx_byte
   rjmp usart_tx_bytes_hex_next
 
-  ldi r20, 0x10
+  clr r20
 
   ldi r16, 0xa
   rcall usart_tx_byte
   ldi r16, 0xd
   rcall usart_tx_byte
 
-  rjmp usart_tx_bytes_hex_start_line
+  rjmp usart_tx_bytes_hex_next
 
 usart_tx_bytes_hex_done:
   ldi r16, 0xa
