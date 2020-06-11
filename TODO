@@ -7,7 +7,6 @@ memory management:
  - replace line
  - bounds checks on all buffers
  - garbage collector?
- - move variables into external ram upper bank
 
 clearer abstractions:
 - skip whitespace at start/end outside of keyword parsers?
@@ -26,7 +25,6 @@ functions:
   TAB
 
 keywords:
-  FOR/NEXT
   LIST
   DIM
   READ/DATA
