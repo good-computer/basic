@@ -1092,6 +1092,11 @@ st_parse_let:
 
 st_parse_for:
 
+  rcall invalid_immediate
+  tst r_error
+  breq PC+2
+  ret
+
   ; starts off like LET
   rcall st_parse_let
   tst r_error
@@ -1139,6 +1144,11 @@ st_parse_for:
 
 
 st_parse_next:
+
+  rcall invalid_immediate
+  tst r_error
+  breq PC+2
+  ret
 
   ; find a variable name
   rcall parse_var
