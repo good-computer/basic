@@ -1799,6 +1799,9 @@ exec_linemap_next:
   mov r21, ZH
   ldi ZH, linemap_buffer_h
 
+  ; start of line
+  ldi r22, low(op_buffer)
+
   ; advance
   adiw ZL, 4
 
@@ -1809,7 +1812,6 @@ exec_linemap_next:
   ; yep, load the next page
   inc r21
   clr r20
-  ldi r22, low(op_buffer)
   rjmp exec_linemap_load
 
 
