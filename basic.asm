@@ -2840,83 +2840,114 @@ eval_op_string:
 
 eval_op_variable:
 
-  sbi PORTB, PB0
-  rjmp PC
+  ; wanted name
+  ld r20, X+
 
-;  ; wanted name
-;  ld r16, X+
-;
-;  ; set number/string mode
-;  bst r16, 7
-;  brts PC+3
-;  sbr r21, 0x2
-;  rjmp PC+2
-;  sbr r21, 0x4
-;
-;  ; setup pointer to first variable
-;  ldi ZL, low(variable_buffer)
-;  ldi ZH, high(variable_buffer)
-;
-;eval_try_var:
-;  ; load the length
-;  ld r18, Z
-;
-;  ; look for end-of-variable marker
-;  tst r18
-;  brne PC+5
-;
-;  ; unknown vars yield a 0
-;  clr r16
-;  st Y+, r16
-;  st Y+, r16
-;
-;  ret
-;
-;  ; get name
-;  ld r17, -Z
-;
-;  ; compare
-;  cp r16, r17
-;  breq eval_found_var
-;
-;  ; not this one, try next. take the name
-;  sbiw ZL, 1
-;
-;  ; skip #r18 bytes of value
-;  sub ZL, r18
-;  brcc eval_try_var
-;  dec ZH
-;  rjmp eval_try_var
-;
-;eval_found_var:
-;
-;  bst r21, 1
-;  brts eval_push_numeric_var
-;
-;  ; string expression
-;  sbr r21, 0x4
-;
-;  ; pull Z back to start of string (#r18 bytes back)
-;  sub ZL, r18
-;  brcc PC+2
-;  dec ZH
-;
-;  ; push pointer to string in variable
-;  st Y+, ZL
-;  st Y+, ZH
-;
-;  ret
-
-eval_push_numeric_var:
-
-  ; numeric expression
+  ; set number/string mode
+  bst r20, 7
+  brts PC+3
   sbr r21, 0x2
+  rjmp PC+2
+  sbr r21, 0x4
 
-  ; push its value
-  ld r16, -Z
-  ld r17, -Z
-  st Y+, r17
+  ; set up for first varmap page
+  clr r16
+  ldi r17, high(varmap_base)
+  ldi r18, 0x1 ; bank 1
+  rcall ram_read_start
+
+eval_varmap_load:
+  clr ZL
+  ldi ZH, varmap_buffer_h
+  clr r16
+  rcall ram_read_bytes
+
+  ; holding ram active, so we can easily load in the next page
+
+  ; reset to start of buffer
+  clr ZL
+  ldi ZH, varmap_buffer_h
+
+  ; walk the varmap, looking for our var
+
+eval_varmap_next:
+  ; load the variable name
+  ld r16, Z
+
+  ; reached the end?
+  tst r16
+  brne PC+5
+
+  ; unknown vars yield a 0
+  clr r16
   st Y+, r16
+  st Y+, r16
+
+  ; finish and return
+  rjmp ram_end
+
+  ; found it? go handle it
+  cp r16, r20
+  breq eval_found_var
+
+  ; not found, advancing
+  adiw ZL, 4
+
+  ; see if we've gone off the end of the page
+  tst ZL
+  brne eval_varmap_next
+
+  ; did, next page
+  inc r17
+  rjmp eval_varmap_load
+
+eval_found_var:
+  rcall ram_end
+
+  ; take the varname
+  adiw ZL, 1
+
+  ; get length
+  ld r19, Z+
+
+  ; prep varmem read
+  ld r16, Z+
+  ld r17, Z+
+  ldi r18, 0x1 ; bank 1
+  rcall ram_read_start
+
+  ; T still set for strings, jump down if so
+  brts eval_push_string_var
+
+  ; numeric, read directly into expr output
+  movw ZL, YL
+  adiw YL, 2
+
+  ; read directly into expression output
+  mov r16, r19
+  rcall ram_read_bytes
+  rjmp ram_end
+
+eval_push_string_var:
+
+  ; ready new string pointer
+  movw ZL, r8
+
+  ; push pointer to start of string we're about to create
+  st Y+, ZL
+  st Y+, ZH
+
+  ; read it in
+  mov r16, r19
+  rcall ram_read_bytes
+  rcall ram_end
+
+  ; trailing null
+  clr r16
+  st Z+, r16
+
+  ; save position for next string
+  movw r8, ZL
 
   ret
 
