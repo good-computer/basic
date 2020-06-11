@@ -9,9 +9,19 @@
 .equ input_buffer     = 0x0060
 .equ input_buffer_end = 0x00df
 
-; gosub stack
-.equ gosub_stack     = 0x00e0
-.equ gosub_stack_end = 0x00ff
+; expression stack
+.equ expr_stack     = 0x00e0
+.equ expr_stack_end = 0x00ef
+
+; external ram tracking
+.equ opmem_top_l   = 0x00fa ; top of opmem (position of next instruction)
+.equ opmem_top_h   = 0x00fb
+.equ varmem_top_l  = 0x00fc ; top of varmem (position of next value)
+.equ varmem_top_h  = 0x00fd
+
+; rng state
+.equ rand_l = 0x00fe
+.equ rand_h = 0x00ff
 
 ; location in internal memory for current linemap page (high byte)
 .equ linemap_buffer_h = high(0x100)
@@ -22,26 +32,16 @@
 .equ for_buffer     = 0x368
 .equ for_buffer_end = 0x37f
 
-; op buffer
-.equ op_buffer = 0x0380
-
 ; string buffer (temp space for strings being created)
-.equ string_buffer     = 0x03b0
-.equ string_buffer_end = 0x03df
+.equ string_buffer     = 0x0300
+.equ string_buffer_end = 0x03af
 
-; expression stack
-.equ expr_stack     = 0x03e0
-.equ expr_stack_end = 0x03ef
+; op buffer
+.equ op_buffer = 0x03b0
 
-; external ram tracking
-.equ r_opmem_top_l   = 0x03fa ; top of opmem (position of next instruction)
-.equ r_opmem_top_h   = 0x03fb
-.equ r_varmem_top_l  = 0x03fc ; top of varmem (position of next value)
-.equ r_varmem_top_h  = 0x03fd
-
-; rng state
-.equ rand_l = 0x03fe
-.equ rand_h = 0x03ff
+; gosub stack
+.equ gosub_stack     = 0x03e0
+.equ gosub_stack_end = 0x03ff
 
 ; stack top
 .equ stack_top = 0x045f
@@ -420,8 +420,8 @@ find_instruction_location:
 
   ; set to write opbuffer out to opmem
   ; XXX check if there's opmem room
-  lds r16, r_opmem_top_l
-  lds r17, r_opmem_top_h
+  lds r16, opmem_top_l
+  lds r17, opmem_top_h
   movw XL, r16 ; save for further down
   ldi r18, 0x0 ; bank 0
   rcall ram_write_start
@@ -553,8 +553,8 @@ append_line:
   brcc PC+2
   inc XH
 
-  sts r_opmem_top_l, XL
-  sts r_opmem_top_h, XH
+  sts opmem_top_l, XL
+  sts opmem_top_h, XH
 
   ; if T is set, we just appended, and need to update the end marker
   brts PC+2
@@ -2516,8 +2516,8 @@ op_new:
   ; reset opmem
   ldi r16, low(opmem_base)
   ldi r17, high(opmem_base)
-  sts r_opmem_top_l, r16
-  sts r_opmem_top_h, r17
+  sts opmem_top_l, r16
+  sts opmem_top_h, r17
 
   ; zero linemap in external ram
   clr r16
@@ -2546,8 +2546,8 @@ op_clear:
   ; reset varmem
   ldi r16, low(varmem_base)
   ldi r17, high(varmem_base)
-  sts r_varmem_top_l, r16
-  sts r_varmem_top_h, r17
+  sts varmem_top_l, r16
+  sts varmem_top_h, r17
 
   ; zero varmap in external ram
   clr r16
@@ -3310,8 +3310,8 @@ append_variable:
   ldi r21, 0x3
 
   ; will store at top of varmem
-  lds XL, r_varmem_top_l
-  lds XH, r_varmem_top_h
+  lds XL, varmem_top_l
+  lds XH, varmem_top_h
 
   rjmp store_variable
 
@@ -3332,8 +3332,8 @@ replace_variable:
   ldi r21, 0x2
 
   ; otherwise, storing new value
-  lds XL, r_varmem_top_l
-  lds XH, r_varmem_top_h
+  lds XL, varmem_top_l
+  lds XH, varmem_top_h
 
   ; move Z back to start of slot
   sbiw ZL, 2
@@ -3409,8 +3409,8 @@ store_value:
   inc XH
 
   ; store it
-  sts r_varmem_top_l, XL
-  sts r_varmem_top_h, XH
+  sts varmem_top_l, XL
+  sts varmem_top_h, XH
 
   ret
 
