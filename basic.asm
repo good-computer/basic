@@ -91,19 +91,20 @@
 .equ error_expected_operand     = 7
 .equ error_expected_string      = 8
 .equ error_mismatched_parens    = 9
-.equ error_unterminated_string  = 10
-.equ error_return_without_gosub = 11
-.equ error_if_without_then      = 12
-.equ error_for_without_to       = 13
-.equ error_next_without_for     = 14
-.equ error_out_of_memory        = 15
-.equ error_overflow             = 16
-.equ error_no_such_line         = 17
-.equ error_type_mismatch        = 18
-.equ error_division_by_zero     = 19
-.equ error_invalid_immediate    = 20
-.equ error_invalid_program      = 21
-.equ error_break                = 22
+.equ error_incorrect_arguments  = 10
+.equ error_unterminated_string  = 11
+.equ error_return_without_gosub = 12
+.equ error_if_without_then      = 13
+.equ error_for_without_to       = 14
+.equ error_next_without_for     = 15
+.equ error_out_of_memory        = 16
+.equ error_overflow             = 17
+.equ error_no_such_line         = 18
+.equ error_type_mismatch        = 19
+.equ error_division_by_zero     = 20
+.equ error_invalid_immediate    = 21
+.equ error_invalid_program      = 22
+.equ error_break                = 23
 
 ; expression ops
 .equ expr_op_number   = 1
@@ -312,6 +313,7 @@ error_lookup_table:
   .dw text_error_expected_operand*2
   .dw text_error_expected_string*2
   .dw text_error_mismatched_parens*2
+  .dw text_error_incorrect_arguments*2
   .dw text_error_unterminated_string*2
   .dw text_error_return_without_gosub*2
   .dw text_error_if_without_then*2
@@ -1205,12 +1207,25 @@ expr_next:
 
   ; check expectations
   sbrc r21, 0
-  rjmp expr_check_operator
+  rjmp expr_check_separator
   rjmp expr_check_operand
 
-  ; closing paren, so pop all the operators to the opening paren and add them to the op buffer
 expr_take_opers:
+  ; closing paren, so pop all the operators to the opening paren and add them to the op buffer
 
+  ; counting number of expressions inside parens, mainly for function args.
+  ; this is number of commas + 1, except for 0. to tell if we got anything at
+  ; all, we look at the type state. if its set at all, then we've seen at least
+  ; one operand
+  mov r17, r21
+  andi r17, 0x6
+  cpi r17, 0x6
+  breq PC+3
+  ldi r17, 0x1
+  rjmp PC+2
+  clr r17
+
+expr_take_next_oper:
   ; top of stack check
   cpi ZL, low(expr_stack)
   brsh PC+3
@@ -1223,22 +1238,58 @@ expr_take_opers:
   ld r16, Z
   dec ZL
 
-  ; check top bit, looking for function end
+  ; check top bit, looking for function (paren) end marker
   tst r16
-  brmi PC+3
+  brmi expr_close_paren
+
+  ; comma separates function args
+  cpi r16, ','
+  breq PC+3
 
   ; anything else, push to output, go for next
   st Y+, r16
-  rjmp expr_take_opers
+  rjmp expr_take_next_oper
 
+  ; comma, so bump arg count
+  inc r17
+
+  ; restore type state for previous expr
+  ld r21, Z
+  dec ZL
+
+  rjmp expr_take_next_oper
+
+expr_close_paren:
   ; drop the flag bit
   cbr r16, 0x80
+
+  ; mask off the arg count bits and make sure we got the right number of args
+  mov r18, r16
+  andi r18, 0x3
+  cp r18, r17
+  breq PC+3
+
+  ldi r_error, error_incorrect_arguments
+  ret
+
+  ; shift down opcode
+  lsr r16
+  lsr r16
 
   ; if its now zero, its a normal left paren and we're done
   breq PC+2
 
   ; otherwise push the op
   st Y+, r16
+
+  ; closing a normal non-function paren?
+  andi r16, 0x7c
+  breq pc+2
+
+  ; function done, restore type state for previous expr
+  ld r21, Z
+
+  dec ZL
 
   ; operator next
   sbr r21, 0x1
@@ -1352,12 +1403,21 @@ expr_maybe_function:
 
   brtc expr_maybe_var
 
-  ;  stack the (marked) function opcode
+  ; stack the current type state and the (marked) function opcode
   inc ZL
+  st Z+, r21
   st Z, r17
 
-  ; still want operand, so no change
+  ; special case type expectations for normal opening paren (vs func token)
+  andi r17, 0x7c
+  brne PC+3
 
+  ; expect operand
+  cbr r21, 0x1
+  rjmp expr_next
+
+  ; expecting operand, either type (functions can have mixed type args)
+  ldi r21, 0x6
   rjmp expr_next
 
 expr_maybe_var:
@@ -1421,8 +1481,25 @@ expr_not_operand:
   ldi r_error, error_expected_operand
   ret
 
-expr_check_operator:
+expr_check_separator:
 
+  ; arg separator?
+  cpi r16, ','
+  brne expr_check_operator
+
+  ; take it
+  adiw XL, 1
+
+  ; stack the current type state, then the comma
+  inc ZL
+  st Z+, r21
+  st Z, r16
+
+  ; expecting operand, either type (new arg, new type)
+  ldi r21, 0x6
+  rjmp expr_next
+
+expr_check_operator:
   ; do operator mode checks, remapping to expr opcodes as we go
 
   ; + works for all operand types
@@ -1576,9 +1653,9 @@ expr_oper_equal_precedence:
   rjmp expr_next
 
 function_table:
-  .db "(",    0x80,             \
-      "ABS(", 0x80|expr_op_abs, \
-      "RND(", 0x80|expr_op_rnd, \
+  .db "(",    0x80|1,                \
+      "ABS(", 0x80|expr_op_abs<<2|1, \
+      "RND(", 0x80|expr_op_rnd<<2|1, \
       0
 
 
@@ -4053,6 +4130,8 @@ text_error_expected_string:
   .db "EXPECTED STRING", 0
 text_error_mismatched_parens:
   .db "MISMATCHED PARENS", 0
+text_error_incorrect_arguments:
+  .db "INCORRECT ARGUMENTS", 0
 text_error_unterminated_string:
   .db "UNTERMINATED STRING", 0
 text_error_return_without_gosub:
