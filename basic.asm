@@ -1692,14 +1692,21 @@ token_loop:
   ; reset X to start of input token
   movw XL, r4
 
-  ; walk Z forward to the next token
+  ; walk Z past the remaining printables
   lpm r17, Z+
-  cpi r17, 0x20
-  brlo token_loop
   cpi r17, 0x7f
-  brlo PC-4
+  brsh PC+3
+  cpi r17, 0x20
+  brsh PC-4
 
-  rjmp token_loop
+  ; and past the opcodes and related
+  lpm r17, Z
+  cpi r17, 0x80
+  brsh PC+3
+  cpi r17, 0x20
+  brsh token_loop
+  adiw ZL, 1
+  rjmp PC-6
 
 token_end:
 
