@@ -118,6 +118,18 @@
 .equ expr_op_rnd      = 9
 .equ expr_op_LAST     = 10
 
+; expression type modifiers
+.equ expr_op_type_mask   = 0x40
+.equ expr_op_type_number = 0x40
+.equ expr_op_type_string = 0x0
+
+; expression args modifiers
+.equ expr_op_args_mask = 0x3
+.equ expr_op_args_0    = 0x0
+.equ expr_op_args_1    = 0x1
+.equ expr_op_args_2    = 0x2
+.equ expr_op_args_3    = 0x3
+
 
 .cseg
 .org 0x0000
@@ -1260,35 +1272,61 @@ expr_take_next_oper:
   rjmp expr_take_next_oper
 
 expr_close_paren:
-  ; drop the flag bit
-  cbr r16, 0x80
+
+  ; modifiers are in r16, get the op into r18
+  ld r18, Z
+  dec ZL
 
   ; mask off the arg count bits and make sure we got the right number of args
-  mov r18, r16
-  andi r18, 0x3
-  cp r18, r17
+  mov r19, r16
+  andi r19, expr_op_args_mask
+  cp r19, r17
   breq PC+3
 
   ldi r_error, error_incorrect_arguments
   ret
 
-  ; shift down opcode
-  lsr r16
-  lsr r16
+  ; mask off the opcode
+  cbr r18, 0x80
 
   ; if its now zero, its a normal left paren and we're done
-  breq PC+2
+  breq expr_close_paren_done
 
   ; otherwise push the op
-  st Y+, r16
-
-  ; closing a normal non-function paren?
-  andi r16, 0x7c
-  breq pc+2
+  st Y+, r18
 
   ; function done, restore type state for previous expr
   ld r21, Z
 
+  ; mask off the return type
+  mov r19, r16
+  andi r19, expr_op_type_mask
+  cpi r19, expr_op_type_number
+  breq expr_close_paren_numeric_check
+
+  ; string function, are we accepting strings?
+  bst r21, 2
+  brts PC+3
+  ldi r_error, error_type_mismatch
+  ret
+
+  ; no longer accepting numbers
+  cbr r21, 0x2
+
+  rjmp expr_close_paren_done
+
+expr_close_paren_numeric_check:
+  ; numeric function, are we accepting numbers?
+  bst r21, 1
+  brts PC+3
+  ldi r_error, error_type_mismatch
+  ret
+
+  ; no longer accepting strings
+  cbr r21, 0x4
+
+expr_close_paren_done:
+  ; take the type state, even if we didn't use it (normal left paren)
   dec ZL
 
   ; operator next
@@ -1398,18 +1436,22 @@ expr_maybe_function:
   ; try to parse one
   rcall parse_token
 
+  ; take the modifier following the opcode in the function table
+  lpm r18, Z
+
   pop ZH
   pop ZL
 
   brtc expr_maybe_var
 
-  ; stack the current type state and the (marked) function opcode
+  ; stack the current type state, function opcode and modifiers
   inc ZL
   st Z+, r21
-  st Z, r17
+  st Z+, r17
+  st Z, r18
 
   ; special case type expectations for normal opening paren (vs func token)
-  andi r17, 0x7c
+  cpi r17, 0x80
   brne PC+3
 
   ; expect operand
@@ -1653,9 +1695,9 @@ expr_oper_equal_precedence:
   rjmp expr_next
 
 function_table:
-  .db "(",    0x80|1,                \
-      "ABS(", 0x80|expr_op_abs<<2|1, \
-      "RND(", 0x80|expr_op_rnd<<2|1, \
+  .db "(",    0x80            , 0x80|expr_op_args_1, \
+      "ABS(", 0x80|expr_op_abs, 0x80|expr_op_type_number|expr_op_args_1, \
+      "RND(", 0x80|expr_op_rnd, 0x80|expr_op_type_number|expr_op_args_0, \
       0
 
 
