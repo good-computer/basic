@@ -118,7 +118,8 @@
 .equ expr_op_abs        = 9
 .equ expr_op_rnd        = 10
 .equ expr_op_left       = 11
-.equ expr_op_LAST       = 12
+.equ expr_op_len        = 12
+.equ expr_op_LAST       = 13
 
 ; expression type modifiers
 .equ expr_op_type_mask   = 0x40
@@ -1767,6 +1768,8 @@ function_table:
       "RND(",   0x80|expr_op_rnd,  0x80|expr_op_type_number|expr_op_args_0, \
       "LEFT$(", 0x80|expr_op_left, 0x80|expr_op_type_string|expr_op_args_2  \
                                        |expr_op_argtype_1_string|expr_op_argtype_2_number, \
+      "LEN(",   0x80|expr_op_len,  0x80|expr_op_type_number|expr_op_args_1 \
+                                       |expr_op_argtype_1_string, \
       0
 
 
@@ -3166,6 +3169,7 @@ eval_op_table:
   rjmp eval_op_abs        ; pop one, fix, push
   rjmp eval_op_rnd        ; rng, push
   rjmp eval_op_left       ; pop two, take left, push
+  rjmp eval_op_len        ; pop one, compute length, push
 
 
 eval_op_number:
@@ -3624,6 +3628,32 @@ eval_op_left:
   ; restore expression position
   pop XH
   pop XL
+
+  ret
+
+
+eval_op_len:
+
+  ; pop A
+  ld ZH, -Y
+  ld ZL, -Y
+
+  ; clear counter
+  clr r16
+  clr r17
+
+  ; walk the string, counting bytes
+  ld r18, Z+
+  tst r18
+  breq PC+5
+  inc r16
+  brne PC-4
+  inc r17
+  brne PC-6
+
+  ; push the counter
+  st Y+, r16
+  st Y+, r17
 
   ret
 
