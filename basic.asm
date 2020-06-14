@@ -3189,12 +3189,16 @@ eval_found_var:
 
   ; get length
   ld r19, Z+
+  push r19
 
   ; prep varmem read
   ld r16, Z+
   ld r17, Z+
   ldi r18, 0x1 ; bank 1
   rcall ram_read_start
+
+  ; get length back
+  pop r19
 
   ; T still set for strings, jump down if so
   brts eval_push_string_var
