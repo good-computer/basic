@@ -1535,16 +1535,16 @@ expr_maybe_var:
   tst r16
   brmi PC+5
 
-  ; a string, load string bit, clear number bit
+  ; a number, load number bit, clear string bit
   bst r21, 1
   cbr r21, 0x4
-  sec
+  clc
   rjmp PC+4
 
-  ; a number, load number bit, clear string bit
+  ; a string, load string bit, clear number bit
   bst r21, 2
   cbr r21, 0x2
-  clc
+  sec
 
   ; continue if its the right type for the var
   brts PC+3
