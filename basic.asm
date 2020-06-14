@@ -118,8 +118,9 @@
 .equ expr_op_abs        = 9
 .equ expr_op_rnd        = 10
 .equ expr_op_left       = 11
-.equ expr_op_len        = 12
-.equ expr_op_LAST       = 13
+.equ expr_op_right      = 12
+.equ expr_op_len        = 13
+.equ expr_op_LAST       = 14
 
 ; expression type modifiers
 .equ expr_op_type_mask   = 0x40
@@ -1762,14 +1763,16 @@ expr_oper_equal_precedence:
   rjmp expr_next
 
 function_table:
-  .db "(",      0x80,              0x80|expr_op_args_1, \
-      "ABS(",   0x80|expr_op_abs,  0x80|expr_op_type_number|expr_op_args_1 \
-                                       |expr_op_argtype_1_number, \
-      "RND(",   0x80|expr_op_rnd,  0x80|expr_op_type_number|expr_op_args_0, \
-      "LEFT$(", 0x80|expr_op_left, 0x80|expr_op_type_string|expr_op_args_2  \
-                                       |expr_op_argtype_1_string|expr_op_argtype_2_number, \
-      "LEN(",   0x80|expr_op_len,  0x80|expr_op_type_number|expr_op_args_1 \
-                                       |expr_op_argtype_1_string, \
+  .db "(",       0x80,               0x80|expr_op_args_1, \
+      "ABS(",    0x80|expr_op_abs,   0x80|expr_op_type_number|expr_op_args_1 \
+                                         |expr_op_argtype_1_number, \
+      "RND(",    0x80|expr_op_rnd,   0x80|expr_op_type_number|expr_op_args_0, \
+      "LEFT$(",  0x80|expr_op_left,  0x80|expr_op_type_string|expr_op_args_2  \
+                                         |expr_op_argtype_1_string|expr_op_argtype_2_number, \
+      "RIGHT$(", 0x80|expr_op_right, 0x80|expr_op_type_string|expr_op_args_2  \
+                                         |expr_op_argtype_1_string|expr_op_argtype_2_number, \
+      "LEN(",    0x80|expr_op_len,   0x80|expr_op_type_number|expr_op_args_1 \
+                                         |expr_op_argtype_1_string, \
       0
 
 
@@ -3169,6 +3172,7 @@ eval_op_table:
   rjmp eval_op_abs        ; pop one, fix, push
   rjmp eval_op_rnd        ; rng, push
   rjmp eval_op_left       ; pop two, take left, push
+  rjmp eval_op_right      ; pop two, take right, push
   rjmp eval_op_len        ; pop one, compute length, push
 
 
@@ -3628,6 +3632,42 @@ eval_op_left:
   ; restore expression position
   pop XH
   pop XL
+
+  ret
+
+
+eval_op_right:
+
+  ; pop wanted count
+  ld r19, -Y
+  ld r18, -Y
+
+  ; pop string pointer into Z
+  ld ZH, -Y
+  ld ZL, -Y
+
+  ; walk Z forward until we hit end of string
+  ld r16, Z+
+  tst r16
+  brne PC-2
+
+  ; walk Z back
+  cpi r18, 0xff
+  brne PC+3
+  cpi r19, 0xff
+  breq PC+6
+
+  sbiw ZL, 1
+
+  subi r18, 1
+  brcc PC+2
+  dec r19
+
+  rjmp PC-8
+
+  ; push position mid-string
+  st Y+, ZL
+  st Y+, ZH
 
   ret
 
