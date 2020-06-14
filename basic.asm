@@ -1106,7 +1106,7 @@ st_parse_let:
 
   ; consider type. var bit 7 and expr parse return bit 7
   ; must be both set (string) or both clear (number)
-  eor r16, r17
+  eor r17, r16
   brpl PC+2
 
   ldi r_error, error_type_mismatch
