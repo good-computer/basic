@@ -279,7 +279,7 @@ handle_error:
   ldi ZH, high(error_lookup_table*2)
   add ZL, r_error
   brcc PC+2
-  inc ZL
+  inc ZH
 
   ; done with error code, clear it
   clr r_error
