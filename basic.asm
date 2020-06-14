@@ -3703,6 +3703,9 @@ eval_op_mid:
   st Y+, XL
   st Y+, XH
 
+  ; incoming start value is 1-based, so take a step back
+  sbiw ZL, 1
+
   ; walk Z forward to start of substring
   tst r16
   brne PC+3
