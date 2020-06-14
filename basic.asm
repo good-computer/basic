@@ -1091,10 +1091,10 @@ st_parse_let:
   brts PC+2
   ldi r_error, error_expected_expression
 
-  ; consider type. var bit 7 and expr parse return bit 0s
+  ; consider type. var bit 7 and expr parse return bit 7
   ; must be both set (string) or both clear (number)
   andi r17, 0x80
-  or r17, r16
+  and r17, r16
   tst r17
   breq PC+4
   cpi r17, 0x81
@@ -1577,15 +1577,14 @@ expr_dump_remaining_opers:
 
   ; check if stack is empty
   cpi ZL, low(expr_stack)
-  brsh PC+7
-
-  ; done! add terminator and get out of here
-  clr r16
-  st Y+, r16
+  brsh PC+6
 
   ; set r16 if expression is stringy
   bst r21, 2
-  bld r16, 0
+  bld r16, 7
+
+  ; done! add terminator and get out of here
+  st Y+, r16
 
   ; did parse things!
   set
@@ -3049,26 +3048,22 @@ eval_expression:
   ldi r17, high(string_buffer)
   movw r8, r16
 
-  ; r21 tracks eval state
-  ; bit 1: numeric expression --- set on first operand
-  ; bit 2: string expression  -/
-  clr r21
-
 eval_next:
 
   ; get expr micro-op
   ld r16, X+
 
   ; terminator
-  tst r16
+  mov r17, r16
+  andi r17, 0x7f
   brne eval_op_setup
+
+  ; set T from high bit of terminator, set for string, clear for number
+  bst r16, 7
 
   ; pop result!
   ld r17, -Y
   ld r16, -Y
-
-  ; indicate result type to caller
-  bst r21, 2
 
   ret
 
@@ -3111,9 +3106,6 @@ eval_op_table:
 
 eval_op_number:
 
-  ; numeric expression
-  sbr r21, 0x2
-
   ; push number onto stack
   ld r16, X+
   ld r17, X+
@@ -3124,9 +3116,6 @@ eval_op_number:
 
 
 eval_op_string:
-
-  ; string expression
-  sbr r21, 0x4
 
   ; push pointer to string on stack
   ;adiw XL, 1
@@ -3145,13 +3134,6 @@ eval_op_variable:
 
   ; wanted name
   ld r20, X+
-
-  ; set number/string mode
-  bst r20, 7
-  brts PC+3
-  sbr r21, 0x2
-  rjmp PC+2
-  sbr r21, 0x4
 
   ; set up for first varmap page
   clr r16
@@ -3334,11 +3316,6 @@ eval_op_add_string:
 
 eval_op_subtract:
 
-  bst r21, 1
-  brts PC+3
-  ldi r_error, error_type_mismatch
-  ret
-
   ; pop B
   ld r19, -Y
   ld r18, -Y
@@ -3363,11 +3340,6 @@ eval_op_subtract:
 
 
 eval_op_multiply:
-
-  bst r21, 1
-  brts PC+3
-  ldi r_error, error_type_mismatch
-  ret
 
   ; pop B
   ld r19, -Y
@@ -3417,11 +3389,6 @@ mul_loop:
 
 
 eval_op_divide:
-
-  bst r21, 1
-  brts PC+3
-  ldi r_error, error_type_mismatch
-  ret
 
   ; pop B
   ld r19, -Y
@@ -3490,11 +3457,6 @@ div_done:
 
 eval_op_abs:
 
-  bst r21, 1
-  brts PC+3
-  ldi r_error, error_type_mismatch
-  ret
-
   ; pop A
   ld r17, -Y
   ld r16, -Y
@@ -3517,11 +3479,6 @@ eval_op_abs:
 
 
 eval_op_rnd:
-
-  bst r21, 1
-  brts PC+3
-  ldi r_error, error_type_mismatch
-  ret
 
   lds r16, rand_l
   lds r17, rand_h
