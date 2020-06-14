@@ -119,8 +119,9 @@
 .equ expr_op_rnd        = 10
 .equ expr_op_left       = 11
 .equ expr_op_right      = 12
-.equ expr_op_len        = 13
-.equ expr_op_LAST       = 14
+.equ expr_op_mid        = 13
+.equ expr_op_len        = 14
+.equ expr_op_LAST       = 15
 
 ; expression type modifiers
 .equ expr_op_type_mask   = 0x40
@@ -1771,6 +1772,8 @@ function_table:
                                          |expr_op_argtype_1_string|expr_op_argtype_2_number, \
       "RIGHT$(", 0x80|expr_op_right, 0x80|expr_op_type_string|expr_op_args_2  \
                                          |expr_op_argtype_1_string|expr_op_argtype_2_number, \
+      "MID$(",   0x80|expr_op_mid,   0x80|expr_op_type_string|expr_op_args_3  \
+                                         |expr_op_argtype_1_string|expr_op_argtype_2_number|expr_op_argtype_3_number, \
       "LEN(",    0x80|expr_op_len,   0x80|expr_op_type_number|expr_op_args_1 \
                                          |expr_op_argtype_1_string, \
       0
@@ -3173,6 +3176,7 @@ eval_op_table:
   rjmp eval_op_rnd        ; rng, push
   rjmp eval_op_left       ; pop two, take left, push
   rjmp eval_op_right      ; pop two, take right, push
+  rjmp eval_op_mid        ; pop three, take n chars from mid, push
   rjmp eval_op_len        ; pop one, compute length, push
 
 
@@ -3668,6 +3672,80 @@ eval_op_right:
   ; push position mid-string
   st Y+, ZL
   st Y+, ZH
+
+  ret
+
+
+eval_op_mid:
+
+  ; pop count
+  ld r19, -Y
+  ld r18, -Y
+
+  ; pop start
+  ld r17, -Y
+  ld r16, -Y
+
+  ; pop pointer to string
+  ld ZH, -Y
+  ld ZL, -Y
+
+  ; save expression position
+  push XL
+  push XH
+
+  ; ready new string pointer
+  movw XL, r8
+
+  ; push pointer to start of string we're about to create
+  st Y+, XL
+  st Y+, XH
+
+  ; walk Z forward to start of substring
+  tst r16
+  brne PC+3
+  tst r17
+  breq PC+8
+
+  ld r20, Z+
+  tst r20
+  breq mid_end
+
+  subi r16, 1
+  brcc PC+2
+  dec r17
+
+  rjmp PC-10
+
+  ; copy bytes until we reach the count
+  tst r18
+  brne PC+3
+  tst r19
+  breq mid_end
+
+  ld r20, Z+
+  tst r20
+  breq mid_end
+
+  st X+, r20
+
+  subi r18, 1
+  brcc PC+2
+  dec r19
+
+  rjmp PC-11
+
+mid_end:
+  ; trailing null
+  clr r16
+  st X+, r16
+
+  ; save position for next string
+  movw r8, XL
+
+  ; restore expression position
+  pop XH
+  pop XL
 
   ret
 
