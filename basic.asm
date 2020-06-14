@@ -1643,6 +1643,7 @@ expr_dump_remaining_opers:
   brsh PC+6
 
   ; set r16 if expression is stringy
+  clr r16
   bst r21, 2
   bld r16, 7
 
