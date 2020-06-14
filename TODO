@@ -1,6 +1,4 @@
 parser:
- - immediate-only/program-only keywords
- - function arg type/count checks
  
 memory management:
  - insert line
@@ -18,8 +16,8 @@ execute mainloop:
 functions:
   INT
   RND
+  LEN
   INKEY$
-  LEFT$
   MID$
   RIGHT$
   TAB
