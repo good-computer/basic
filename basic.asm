@@ -132,6 +132,15 @@
 .equ expr_op_args_2    = 0x2
 .equ expr_op_args_3    = 0x3
 
+; expression arg type modifier
+.equ expr_op_argtype_mask     = 0x1c
+.equ expr_op_argtype_1_string = 0x10
+.equ expr_op_argtype_1_number = 0x0
+.equ expr_op_argtype_2_string = 0x08
+.equ expr_op_argtype_2_number = 0x0
+.equ expr_op_argtype_3_string = 0x04
+.equ expr_op_argtype_3_number = 0x0
+
 
 .cseg
 .org 0x0000
@@ -1289,6 +1298,34 @@ expr_close_paren:
   ldi r_error, error_incorrect_arguments
   ret
 
+  ; compute number of arg type shifts from number of args
+  ldi r20, 5
+  sub r20, r19
+
+  ; and do the shifts
+  mov r19, r22
+  tst r20
+  breq PC+4
+  lsl r19
+  dec r20
+  rjmp PC-4
+
+  ; and mask
+  andi r19, expr_op_argtype_mask
+
+  ; r19 now has the most recent arg types, shifted into place
+
+  ; mask off the wanted arg types for checking
+  mov r20, r16
+  andi r20, expr_op_argtype_mask
+
+  ; now they need to match!
+  cp r19, r20
+  breq PC+3
+
+  ldi r_error, error_type_mismatch
+  ret
+
   ; mask off the opcode
   cbr r18, 0x80
 
@@ -1725,9 +1762,11 @@ expr_oper_equal_precedence:
 
 function_table:
   .db "(",      0x80,              0x80|expr_op_args_1, \
-      "ABS(",   0x80|expr_op_abs,  0x80|expr_op_type_number|expr_op_args_1, \
+      "ABS(",   0x80|expr_op_abs,  0x80|expr_op_type_number|expr_op_args_1 \
+                                       |expr_op_argtype_1_number, \
       "RND(",   0x80|expr_op_rnd,  0x80|expr_op_type_number|expr_op_args_0, \
-      "LEFT$(", 0x80|expr_op_left, 0x80|expr_op_type_string|expr_op_args_2, \
+      "LEFT$(", 0x80|expr_op_left, 0x80|expr_op_type_string|expr_op_args_2  \
+                                       |expr_op_argtype_1_string|expr_op_argtype_2_number, \
       0
 
 
