@@ -16,10 +16,7 @@ execute mainloop:
 functions:
   INT
   RND
-  LEN
   INKEY$
-  MID$
-  RIGHT$
   TAB
 
 keywords:
