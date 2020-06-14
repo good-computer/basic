@@ -3279,8 +3279,9 @@ eval_found_var:
   ; get length back
   pop r19
 
-  ; T still set for strings, jump down if so
-  brts eval_push_string_var
+  ; test high bit of name for string, jump if so
+  tst r20
+  brmi eval_push_string_var
 
   ; numeric, read directly into expr output
   movw ZL, YL
