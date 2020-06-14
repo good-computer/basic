@@ -3588,13 +3588,13 @@ eval_op_rnd:
 
 eval_op_left:
 
-  ; pop B
+  ; pop count
   ld r19, -Y
   ld r18, -Y
 
-  ; pop A
-  ld r17, -Y
-  ld r16, -Y
+  ; pop string pointer
+  ld ZH, -Y
+  ld ZL, -Y
 
   ; save expression position
   push XL
@@ -3607,25 +3607,25 @@ eval_op_left:
   st Y+, XL
   st Y+, XH
 
-  ; pointer to first string
-  movw ZL, r16
+  ; copy bytes until we reach the count
+  tst r18
+  brne PC+3
+  tst r19
+  breq left_end
 
-  ; byte counter
-  clr r2
-  clr r3
+  ld r20, Z+
+  tst r20
+  breq left_end
 
-  ; copy bytes until we reach the count or end of string
-  ld r16, Z+
-  tst r16
-  breq PC+8
-  st X+, r16
-  inc r2
-  brne PC+2
-  inc r3
-  cp r2, r18
-  cpc r3, r19
-  brne PC-9
+  st X+, r20
 
+  subi r18, 1
+  brcc PC+2
+  dec r19
+
+  rjmp PC-11
+
+left_end:
   ; trailing null
   clr r16
   st X+, r16
