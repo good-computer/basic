@@ -1202,6 +1202,12 @@ parse_expression:
   ; disable the other type
   ldi r21, 0x6
 
+  ; r22 tracks types of most-recently-seen operands. more recent in the lower
+  ; bits, shifted for each new operand. used to check operand types for
+  ; functions. even though we can't have more than three args, its convenient
+  ; to use a whole register because we can just do shifts
+  clr r22
+
 expr_next:
   rcall skip_whitespace
 
@@ -1310,6 +1316,10 @@ expr_close_paren:
   ; no longer accepting numbers
   cbr r21, 0x2
 
+  ; record string operand
+  sec
+  rol r22
+
   rjmp expr_close_paren_done
 
 expr_close_paren_numeric_check:
@@ -1321,6 +1331,10 @@ expr_close_paren_numeric_check:
 
   ; no longer accepting strings
   cbr r21, 0x4
+
+  ; record number operand
+  clc
+  rol r22
 
 expr_close_paren_done:
   ; take the type state, even if we didn't use it (normal left paren)
@@ -1357,6 +1371,10 @@ expr_check_operand:
   ; no longer accepting strings
   cbr r21, 0x4
 
+  ; record number operand
+  clc
+  rol r22
+
   ; literal number marker
   ldi r16, expr_op_number
   st Y+, r16
@@ -1387,6 +1405,10 @@ expr_maybe_string:
 
   ; no longer accepting numbers
   cbr r21, 0x2
+
+  ; record string operand
+  sec
+  rol r22
 
   ; take the double-quote
   adiw XL, 1
@@ -1473,16 +1495,18 @@ expr_maybe_var:
   ; make sure it matches the type we want
   ; r16 bit 7 is true for string var, false for numeric
   tst r16
-  brmi PC+4
+  brmi PC+5
 
   ; a string, load string bit, clear number bit
   bst r21, 1
   cbr r21, 0x4
-  rjmp PC+3
+  sec
+  rjmp PC+4
 
   ; a number, load number bit, clear string bit
   bst r21, 2
   cbr r21, 0x2
+  clc
 
   ; continue if its the right type for the var
   brts PC+3
@@ -1490,6 +1514,9 @@ expr_maybe_var:
   ; nope
   ldi r_error, error_type_mismatch
   ret
+
+  ; record operand type
+  rol r22
 
   ; variable lookup!
   ldi r17, expr_op_variable
