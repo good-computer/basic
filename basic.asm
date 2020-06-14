@@ -107,16 +107,17 @@
 .equ error_break                = 23
 
 ; expression ops
-.equ expr_op_number   = 1
-.equ expr_op_string   = 2
-.equ expr_op_variable = 3
-.equ expr_op_add      = 4
-.equ expr_op_subtract = 5
-.equ expr_op_multiply = 6
-.equ expr_op_divide   = 7
-.equ expr_op_abs      = 8
-.equ expr_op_rnd      = 9
-.equ expr_op_LAST     = 10
+.equ expr_op_number     = 1
+.equ expr_op_string     = 2
+.equ expr_op_variable   = 3
+.equ expr_op_add_number = 4
+.equ expr_op_add_string = 5
+.equ expr_op_subtract   = 6
+.equ expr_op_multiply   = 7
+.equ expr_op_divide     = 8
+.equ expr_op_abs        = 9
+.equ expr_op_rnd        = 10
+.equ expr_op_LAST       = 11
 
 ; expression type modifiers
 .equ expr_op_type_mask   = 0x40
@@ -1546,12 +1547,16 @@ expr_check_operator:
 
   ; + works for all operand types
   cpi r16, '+'
-  brne PC+3
-  ldi r16, expr_op_add
+  brne expr_check_number_operator
+
+  ; choose the right kind of add op
+  ldi r16, expr_op_add_number
+  sbrc r21, 2
+  ldi r16, expr_op_add_string
   rjmp expr_start_oper
 
+expr_check_number_operator:
   ; - * / only work for numbers
-
   cpi r16, '-'
   brne PC+3
   ldi r16, expr_op_subtract
@@ -1669,9 +1674,11 @@ expr_oper_higher_precedence:
 
 expr_oper_check_plusminus_precedence:
 
-  cpi r17, expr_op_add
+  cpi r17, expr_op_add_number
   breq expr_oper_equal_precedence
-  cpi r17, expr_op_add
+  cpi r17, expr_op_add_string
+  breq expr_oper_equal_precedence
+  cpi r17, expr_op_subtract
   breq expr_oper_equal_precedence
 
   ; lower precedence then stack. pop and output, then retest
@@ -3090,15 +3097,16 @@ eval_op_setup:
 
 eval_op_table:
   .dw 0
-  rjmp eval_op_number   ; pop number, set numeric expression
-  rjmp eval_op_string   ; pop string, set string expression
-  rjmp eval_op_variable ; expand variable, set matching expression type
-  rjmp eval_op_add      ; pop two, add, push
-  rjmp eval_op_subtract ; pop two, subtract, push
-  rjmp eval_op_multiply ; pop two, multiply, push
-  rjmp eval_op_divide   ; pop two, divide, push
-  rjmp eval_op_abs      ; pop one, fix, push
-  rjmp eval_op_rnd      ; rng, push
+  rjmp eval_op_number     ; pop number, set numeric expression
+  rjmp eval_op_string     ; pop string, set string expression
+  rjmp eval_op_variable   ; expand variable, set matching expression type
+  rjmp eval_op_add_number ; pop two, add, push
+  rjmp eval_op_add_string ; pop two, add, push
+  rjmp eval_op_subtract   ; pop two, subtract, push
+  rjmp eval_op_multiply   ; pop two, multiply, push
+  rjmp eval_op_divide     ; pop two, divide, push
+  rjmp eval_op_abs        ; pop one, fix, push
+  rjmp eval_op_rnd        ; rng, push
 
 
 eval_op_number:
@@ -3244,7 +3252,7 @@ eval_push_string_var:
   ret
 
 
-eval_op_add:
+eval_op_add_number:
 
   ; pop B
   ld r19, -Y
@@ -3253,9 +3261,6 @@ eval_op_add:
   ; pop A
   ld r17, -Y
   ld r16, -Y
-
-  bst r21, 2
-  brts eval_add_string
 
   ; A + B
   add r16, r18
@@ -3271,7 +3276,16 @@ eval_op_add:
 
   ret
 
-eval_add_string:
+
+eval_op_add_string:
+
+  ; pop B
+  ld r19, -Y
+  ld r18, -Y
+
+  ; pop A
+  ld r17, -Y
+  ld r16, -Y
 
   ; save expression position
   push XL
