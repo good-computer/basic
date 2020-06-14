@@ -1640,7 +1640,7 @@ expr_dump_remaining_opers:
 
   ; check if stack is empty
   cpi ZL, low(expr_stack)
-  brsh PC+6
+  brsh PC+7
 
   ; set r16 if expression is stringy
   clr r16
