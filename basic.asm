@@ -1710,6 +1710,9 @@ function_table:
 ;   T:  set if we actually parsed something
 parse_token:
 
+  ; assume no match
+  clt
+
   ; take copy of pointer to start of statement, so we can reset it
   movw r4, XL
 
@@ -1720,9 +1723,13 @@ token_loop:
 
   ; if its outside the ascii printables area, then its an opcode and we matched
   cpi r17, 0x20
-  brlo token_end
+  brlo PC+3
   cpi r17, 0x7f
-  brsh token_end
+  brlo PC+3
+
+  ; parsed stuff, tell the caller
+  set
+  ret
 
   ; load the next char of the input token and compare
   ld r16, X+
@@ -1741,31 +1748,28 @@ token_loop:
   cpi r17, 0x20
   brsh PC-4
 
+token_walk:
   ; and past the opcodes and related
   lpm r17, Z
+
+  ; zero? end of table
+  tst r17
+  brne PC+3
+
+  ; reset X
+  mov XL, r4
+
+  ; nothing parsed
+  ret
+
+  ; look for printables
   cpi r17, 0x80
   brsh PC+3
   cpi r17, 0x20
   brsh token_loop
+
   adiw ZL, 1
-  rjmp PC-6
-
-token_end:
-
-  ; but if its zero, we hit the end of the token table, so it wasn't found
-  tst r17
-  brne PC+4
-
-  ; reset X
-  movw XL, r4
-
-  ; flag nothing parsed
-  clt
-  ret
-
-  ; parsed stuff, tell the caller
-  set
-  ret
+  rjmp token_walk
 
 
 ; parse a var name
