@@ -117,7 +117,8 @@
 .equ expr_op_divide     = 8
 .equ expr_op_abs        = 9
 .equ expr_op_rnd        = 10
-.equ expr_op_LAST       = 11
+.equ expr_op_left       = 11
+.equ expr_op_LAST       = 12
 
 ; expression type modifiers
 .equ expr_op_type_mask   = 0x40
@@ -1701,9 +1702,10 @@ expr_oper_equal_precedence:
   rjmp expr_next
 
 function_table:
-  .db "(",    0x80            , 0x80|expr_op_args_1, \
-      "ABS(", 0x80|expr_op_abs, 0x80|expr_op_type_number|expr_op_args_1, \
-      "RND(", 0x80|expr_op_rnd, 0x80|expr_op_type_number|expr_op_args_0, \
+  .db "(",      0x80,              0x80|expr_op_args_1, \
+      "ABS(",   0x80|expr_op_abs,  0x80|expr_op_type_number|expr_op_args_1, \
+      "RND(",   0x80|expr_op_rnd,  0x80|expr_op_type_number|expr_op_args_0, \
+      "LEFT$(", 0x80|expr_op_left, 0x80|expr_op_type_string|expr_op_args_2, \
       0
 
 
@@ -3102,6 +3104,7 @@ eval_op_table:
   rjmp eval_op_divide     ; pop two, divide, push
   rjmp eval_op_abs        ; pop one, fix, push
   rjmp eval_op_rnd        ; rng, push
+  rjmp eval_op_left       ; pop two, take left, push
 
 
 eval_op_number:
@@ -3502,6 +3505,60 @@ eval_op_rnd:
 
   st Y+, r16
   st Y+, r17
+
+  ret
+
+
+eval_op_left:
+
+  ; pop B
+  ld r19, -Y
+  ld r18, -Y
+
+  ; pop A
+  ld r17, -Y
+  ld r16, -Y
+
+  ; save expression position
+  push XL
+  push XH
+
+  ; ready new string pointer
+  movw XL, r8
+
+  ; push pointer to start of string we're about to create
+  st Y+, XL
+  st Y+, XH
+
+  ; pointer to first string
+  movw ZL, r16
+
+  ; byte counter
+  clr r2
+  clr r3
+
+  ; copy bytes until we reach the count or end of string
+  ld r16, Z+
+  tst r16
+  breq PC+8
+  st X+, r16
+  inc r2
+  brne PC+2
+  inc r3
+  cp r2, r18
+  cpc r3, r19
+  brne PC-9
+
+  ; trailing null
+  clr r16
+  st X+, r16
+
+  ; save position for next string
+  movw r8, XL
+
+  ; restore expression position
+  pop XH
+  pop XL
 
   ret
 
