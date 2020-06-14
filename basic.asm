@@ -122,8 +122,8 @@
 
 ; expression type modifiers
 .equ expr_op_type_mask   = 0x40
-.equ expr_op_type_number = 0x40
-.equ expr_op_type_string = 0x0
+.equ expr_op_type_number = 0x00
+.equ expr_op_type_string = 0x40
 
 ; expression args modifiers
 .equ expr_op_args_mask = 0x3
