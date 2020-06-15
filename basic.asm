@@ -1679,43 +1679,28 @@ expr_start_oper:
   ; take the operator
   adiw XL, 1
 
-expr_try_oper:
-  ; check if stack empty
-  cpi ZL, low(expr_stack)
-  brlo expr_push_oper
-
-  ; see what's on the stack
-  ld r17, Z
-  tst r17
-
-  ; high bit set is a left paren (or equivalent)
-  brmi expr_push_oper
-
-  ; comma is the start of a new expr, so effectively stack empty
-  cpi r17, ','
-  brne expr_oper_precedence
-
-expr_push_oper:
-  ; start of (sub-)expression so push the oper
-  inc ZL
-  st Z, r16
-
-  ; operand next
-  cbr r21, 0x1
-  rjmp expr_next
-
-expr_oper_precedence:
+expr_check_oper_precedence:
 
   ; - if higher precendence, push onto stack
   ; - if equal precedence, pop and output, then push
   ; - if lower precedence, pop and output, then retest
 
+  ; check if stack empty
+  cpi ZL, low(expr_stack)
+  brlo expr_oper_higher_precedence
+
   ; inspect top of stack
   ld r17, Z
-
-  ; everything is higher precedence than left paren
   tst r17
+
+  ; high bit set is a left paren (or equivalent)
   brmi expr_oper_higher_precedence
+
+  ; comma is the start of a new expr, so effectively stack empty
+  cpi r17, ','
+  breq expr_oper_higher_precedence
+
+  ; alright, there's a real op on the stack, now have to compare it to the current one
 
   ; only * and / can have higher precedence
   cpi r16, expr_op_multiply
@@ -1751,7 +1736,7 @@ expr_oper_check_plusminus_precedence:
   dec ZL
   st Y+, r17
 
-  rjmp expr_try_oper
+  rjmp expr_check_oper_precedence
 
 expr_oper_equal_precedence:
 
