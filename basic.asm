@@ -1228,9 +1228,7 @@ expr_next:
 
   ; closing paren triggers stack take
   cpi r16, ')'
-  brne PC+3
-  adiw XL, 1
-  rjmp expr_take_opers
+  breq expr_take_opers
 
   ; check expectations
   sbrc r21, 0
@@ -1238,7 +1236,11 @@ expr_next:
   rjmp expr_check_operand
 
 expr_take_opers:
+
   ; closing paren, so pop all the operators to the opening paren and add them to the op buffer
+
+  ; take the paren
+  adiw XL, 1
 
   ; counting number of expressions inside parens, mainly for function args.
   ; this is number of commas + 1, except for 0. to tell if we got anything at
@@ -1247,9 +1249,19 @@ expr_take_opers:
   mov r17, r21
   andi r17, 0x6
   cpi r17, 0x6
-  breq PC+3
+  breq PC+7
+
+  ; push type to arg list
+  clc
+  sbrc r21, 2
+  sec
+  rol r22
+
+  ; one arg
   ldi r17, 0x1
   rjmp PC+2
+
+  ; no type state, so no args
   clr r17
 
 expr_take_next_oper:
@@ -1356,10 +1368,6 @@ expr_close_paren:
   ; no longer accepting numbers
   cbr r21, 0x2
 
-  ; record string operand
-  sec
-  rol r22
-
   rjmp expr_close_paren_done
 
 expr_close_paren_numeric_check:
@@ -1371,10 +1379,6 @@ expr_close_paren_numeric_check:
 
   ; no longer accepting strings
   cbr r21, 0x4
-
-  ; record number operand
-  clc
-  rol r22
 
 expr_close_paren_done:
   ; take the type state, even if we didn't use it (normal left paren)
@@ -1411,10 +1415,6 @@ expr_check_operand:
   ; no longer accepting strings
   cbr r21, 0x4
 
-  ; record number operand
-  clc
-  rol r22
-
   ; literal number marker
   ldi r16, expr_op_number
   st Y+, r16
@@ -1445,10 +1445,6 @@ expr_maybe_string:
 
   ; no longer accepting numbers
   cbr r21, 0x2
-
-  ; record string operand
-  sec
-  rol r22
 
   ; take the double-quote
   adiw XL, 1
@@ -1535,18 +1531,16 @@ expr_maybe_var:
   ; make sure it matches the type we want
   ; r16 bit 7 is true for string var, false for numeric
   tst r16
-  brmi PC+5
+  brmi PC+4
 
   ; a number, load number bit, clear string bit
   bst r21, 1
   cbr r21, 0x4
-  clc
-  rjmp PC+4
+  rjmp PC+3
 
   ; a string, load string bit, clear number bit
   bst r21, 2
   cbr r21, 0x2
-  sec
 
   ; continue if its the right type for the var
   brts PC+3
@@ -1554,9 +1548,6 @@ expr_maybe_var:
   ; nope
   ldi r_error, error_type_mismatch
   ret
-
-  ; record operand type
-  rol r22
 
   ; variable lookup!
   ldi r17, expr_op_variable
@@ -1595,6 +1586,12 @@ expr_check_separator:
 
   ; take it
   adiw XL, 1
+
+  ; push type to arg list
+  clc
+  sbrc r21, 2
+  sec
+  rol r22
 
   ; stack the current type state, then the comma
   inc ZL
