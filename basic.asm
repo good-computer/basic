@@ -1593,9 +1593,41 @@ expr_check_separator:
   sec
   rol r22
 
+  ; pop and output everything back to start of expression (comma or paren)
+
+expr_comma_take_next_oper:
+  ; top of stack check
+  cpi ZL, low(expr_stack)
+  brsh PC+3
+
+  ; ran out of stack before we found the opening paren
+  ldi r_error, error_mismatched_parens
+  ret
+
+  ; check the top item
+  ld r16, Z
+
+  ; check top bit, looking for function (paren) end marker
+  tst r16
+  brmi PC+6
+
+  ; or comma
+  cpi r16, ','
+  breq PC+4
+
+  ; something else, take it
+  dec ZL
+
+  ; push to output
+  st Y+, r16
+
+  ; and go for next
+  rjmp expr_comma_take_next_oper
+
   ; stack the current type state, then the comma
   inc ZL
   st Z+, r21
+  ldi r16, ','
   st Z, r16
 
   ; expecting operand, either type (new arg, new type)
