@@ -1687,10 +1687,16 @@ expr_try_oper:
   ; see what's on the stack
   ld r17, Z
   tst r17
-  brpl expr_oper_precedence
+
+  ; high bit set is a left paren (or equivalent)
+  brmi expr_push_oper
+
+  ; comma is the start of a new expr, so effectively stack empty
+  cpi r17, ','
+  brne expr_oper_precedence
 
 expr_push_oper:
-  ; stack empty or left paren on stack, so push the oper
+  ; start of (sub-)expression so push the oper
   inc ZL
   st Z, r16
 
