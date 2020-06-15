@@ -3708,6 +3708,11 @@ eval_op_mid:
   ld r17, -Y
   ld r16, -Y
 
+  ; start is 1-based, so decrement to bring it back to 0
+  subi r16, 1
+  brcc PC+2
+  dec r17
+
   ; pop pointer to string
   ld ZH, -Y
   ld ZL, -Y
@@ -3722,9 +3727,6 @@ eval_op_mid:
   ; push pointer to start of string we're about to create
   st Y+, XL
   st Y+, XH
-
-  ; incoming start value is 1-based, so take a step back
-  sbiw ZL, 1
 
   ; walk Z forward to start of substring
   tst r16
