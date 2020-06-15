@@ -16,7 +16,6 @@ execute mainloop:
 functions:
   INT
   RND
-  INKEY$
   TAB
 
 keywords:

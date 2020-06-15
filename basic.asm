@@ -121,7 +121,8 @@
 .equ expr_op_right      = 12
 .equ expr_op_mid        = 13
 .equ expr_op_len        = 14
-.equ expr_op_LAST       = 15
+.equ expr_op_inkey      = 15
+.equ expr_op_LAST       = 16
 
 ; expression type modifiers
 .equ expr_op_type_mask   = 0x40
@@ -1797,6 +1798,7 @@ function_table:
                                          |expr_op_argtype_1_string|expr_op_argtype_2_number|expr_op_argtype_3_number, \
       "LEN(",    0x80|expr_op_len,   0x80|expr_op_type_number|expr_op_args_1 \
                                          |expr_op_argtype_1_string, \
+      "INKEY$(", 0x80|expr_op_inkey, 0x80|expr_op_type_string|expr_op_args_0, \
       0
 
 
@@ -3199,6 +3201,7 @@ eval_op_table:
   rjmp eval_op_right      ; pop two, take right, push
   rjmp eval_op_mid        ; pop three, take n chars from mid, push
   rjmp eval_op_len        ; pop one, compute length, push
+  rjmp eval_op_inkey      ; wait for key, push
 
 
 eval_op_number:
@@ -3799,6 +3802,36 @@ eval_op_len:
   ; push the counter
   st Y+, r16
   st Y+, r17
+
+  ret
+
+
+eval_op_inkey:
+
+  rcall usart_rx_byte
+
+  ; break check
+  cpi r16, 0x1b
+  brne PC+3
+  ldi r_error, error_break
+  ret
+
+  ; ready new string pointer
+  movw ZL, r8
+
+  ; push pointer to start of string we're about to create
+  st Y+, ZL
+  st Y+, ZH
+
+  ; push the byte
+  st Z+, r16
+
+  ; trailing null
+  clr r16
+  st Z+, r16
+
+  ; save position for next string
+  movw r8, ZL
 
   ret
 
