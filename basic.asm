@@ -104,7 +104,8 @@
 .equ error_division_by_zero     = 20
 .equ error_invalid_immediate    = 21
 .equ error_invalid_program      = 22
-.equ error_break                = 23
+.equ error_transfer_error       = 23
+.equ error_break                = 24
 
 ; expression ops
 .equ expr_op_number     = 1
@@ -353,6 +354,7 @@ error_lookup_table:
   .dw text_error_division_by_zero*2
   .dw text_error_invalid_immediate*2
   .dw text_error_invalid_program*2
+  .dw text_error_transfer_error*2
   .dw text_error_break*2
 
 
@@ -801,6 +803,8 @@ keyword_table:
       "RESET",  0x12, \
       "CLS",    0x13, \
                       \
+      "XLOAD",  0x14, \
+                      \
       0
 
 keyword_subparser_table:
@@ -824,6 +828,7 @@ keyword_subparser_table:
   ret                    ; 0x11 [SLEEP]
   ret                    ; 0x12 [RESET]
   ret                    ; 0x13 [CLS]
+  rjmp invalid_program   ; 0x14 [XLOAD]
 
 
 invalid_immediate:
@@ -2132,6 +2137,7 @@ op_table:
   rjmp op_sleep   ; 0x11 [SLEEP]
   rjmp op_reset   ; 0x12 [RESET]
   rjmp op_cls     ; 0x13 [CLS]
+  rjmp op_xload   ; 0x14 [XLOAD]
 
 op_print:
 
@@ -3124,6 +3130,259 @@ op_cls:
   ldi ZL, low(text_clear*2)
   ldi ZH, high(text_clear*2)
   rjmp usart_print_static
+
+
+op_xload:
+
+  ; xmodem receiver: send NAK, wait for data to arrive
+  ; XXX implement 10x10 retry
+
+  ; CTC mode, /1024 prescaler
+  ldi r16, (1<<WGM12)|(1<<CS12)|(1<<CS10)
+  out TCCR1B, r16
+
+  ; ~2-3s
+  ldi r16, low(0xb718)
+  ldi r17, high(0xb718)
+  out OCR1AH, r17
+  out OCR1AL, r16
+
+  ; 10 tries
+  ldi r17, 10
+
+xload_try_handshake:
+  ; ready to receive
+  ldi r16, 0x15 ; NAK
+  rcall usart_tx_byte
+
+  ; clear counter
+  clr r16
+  out TCNT1H, r16
+  out TCNT1L, r16
+
+  ; loop until timer expires, or usart becomes readable
+  in r16, TIFR
+  sbrc r16, OCF1A
+  rjmp xload_timer_expired
+  sbic UCSRA, RXC
+  rjmp xload_ready
+  rjmp PC-5
+
+xload_timer_expired:
+
+  ; acknowledge timer
+  ldi r16, (1<<OCF1A)
+  out TIFR, r16
+
+  ; out of tries?
+  dec r17
+  brne xload_try_handshake
+
+  ; disable timer
+  clr r16
+  out TCCR1B, r16
+
+  ldi r_error, error_transfer_error
+  ret
+
+xload_ready:
+
+  ; disable timer
+  clr r16
+  out TCCR1B, r16
+
+  ; ok, we're really doing this. set up to recieve
+
+  ; trash existing program
+  rcall op_new
+
+  ; track RAM position in Z, so we can backtrack if necessary
+  clr ZL
+  clr ZH
+
+xload_rx_init:
+  ; initialise RAM for write
+  movw r16, ZL
+  ldi r18, 0x1 ; bank 1
+  rcall ram_write_start
+
+xload_rx_packet:
+  ; look for start of packet
+  rcall usart_rx_byte
+  cpi r16, 0x04 ; EOT
+  breq xload_done
+  cpi r16, 0x01 ; SOH
+  breq PC+3
+
+  ldi r_error, error_transfer_error
+  ret
+
+  ; sequence byte
+  rcall usart_rx_byte
+  ; XXX check it
+
+  ; sequence complement
+  rcall usart_rx_byte
+  ; XXX check it
+
+  ; prepare for checksum
+  clr r17
+
+  ; want 128 bytes
+  ldi r18, 127
+
+  ; take a byte
+  rcall usart_rx_byte
+
+  ; store it
+  rcall ram_write_byte
+
+  ; add to checksum
+  add r17, r16
+
+  ; advance RAM tracking pointer
+  adiw ZL, 1
+
+  ; continue for 128 bytes
+  dec r18
+  brpl PC-5
+
+  ; read checksum
+  rcall usart_rx_byte
+
+  ; compare recieved checksum with computed
+  cp r16, r17
+  brne PC+4
+
+  ; checksum match, packet received! ack it
+  ldi r16, 0x06 ; ACK
+  rcall usart_tx_byte
+
+  ; go again
+  rjmp xload_rx_packet
+
+  ; checksum fail, inform transmitter
+  ldi r16, 0x15 ; NAK
+  rcall usart_tx_byte
+
+  ; end ram write
+  rcall ram_end
+
+  ; reset buffer for resend
+  andi ZL, 0x80
+
+  ; reinit ram and go again
+  rjmp xload_rx_init
+
+xload_done:
+
+  ; received EOT, ack it
+  ldi r16, 0x06
+  rcall usart_tx_byte
+
+  ; write terminator to ram
+  clr r16
+  rcall ram_write_byte
+
+  ; write done
+  rcall ram_end
+
+  ; program text is now in bank 1; read line at a time into input buffer
+
+  ; track RAM position in Z, so we can reset it
+  clr ZL
+  clr ZH
+
+xload_input_line:
+  ; set up for read
+  movw r16, ZL
+  ldi r18, 0x1 ; bank 1
+  rcall ram_read_start
+
+  ; prep input buffer
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+
+xload_input_byte:
+  ; read byte
+  rcall ram_read_byte
+
+  ; advance RAM tracking pointer
+  adiw ZL, 1
+
+  ; check end of line
+  tst r16
+  breq xload_end_line
+  cpi r16, 0xa
+  breq xload_end_line
+
+  ; drop non-printables
+  cpi r16, 0x20
+  brlo xload_input_byte
+  cpi r16, 0x7f
+  brsh xload_input_byte
+
+  ; XXX check input buffer overrun
+
+  ; store byte to input buffer
+  st X+, r16
+
+  rjmp xload_input_byte
+
+xload_end_line:
+
+  ; close ram for now
+  rcall ram_end
+
+  ; store line terminator
+  clr r17
+  st X+, r17
+
+  ; save state
+  push r16
+  push ZL
+  push ZH
+
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+  rcall usart_print
+  ldi r16, 0xa
+  rcall usart_tx_byte
+  ldi r16, 0xd
+  rcall usart_tx_byte
+
+  ; clear error state
+  clr r_error
+
+  ; process the line!
+  rcall handle_line_input
+
+  ; restore state
+  pop ZH
+  pop ZL
+  pop r16
+
+  ; parse errors?
+  tst r_error
+  breq PC+4
+
+  ; report
+  ; XXX do more here to help user find out where it failed
+  rcall handle_error
+
+  ; abort
+  clr r_error
+  ret
+
+  ; line was entered! end of program?
+  tst r16
+  breq PC+2
+
+  ; nope, go get a new line
+  rjmp xload_input_line
+
+  ; loaded!
+  ret
 
 
 ; evaluate expression
@@ -4510,5 +4769,7 @@ text_error_invalid_immediate:
   .db "INVALID STATEMENT IN IMMEDIATE MODE", 0
 text_error_invalid_program:
   .db "INVALID STATEMENT IN PROGRAM", 0
+text_error_transfer_error:
+  .db "TRANSFER ERROR", 0
 text_error_break:
   .db "BREAK", 0
