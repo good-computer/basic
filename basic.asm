@@ -317,8 +317,8 @@ handle_error:
 
   pop r17
   pop r16
-  ldi XL, low(input_buffer)
-  ldi XH, high(input_buffer)
+  ldi YL, low(input_buffer)
+  ldi YH, high(input_buffer)
   rcall format_number
 
   ldi ZL, low(input_buffer)
@@ -2217,13 +2217,9 @@ print_expr:
 
 print_number:
   ; format number to start of input buffer
-  push XL
-  push XH
-  ldi XL, low(input_buffer)
-  ldi XH, high(input_buffer)
+  ldi YL, low(input_buffer)
+  ldi YH, high(input_buffer)
   rcall format_number
-  pop XH
-  pop XL
 
   ; and print it
   ldi ZL, low(input_buffer)
@@ -3339,16 +3335,14 @@ dump_linemap_next:
   ld r5, Z+
 
   ; save position in linemap
-  movw YL, ZL
+  movw r6, ZL
 
   ; output line number
-  push XL
-  push XH
-  ldi XL, low(input_buffer)
-  ldi XH, high(input_buffer)
+  ldi YL, low(input_buffer)
+  ldi YH, high(input_buffer)
   rcall format_number
-  pop XH
-  pop XL
+
+  ; and print it
   ldi ZL, low(input_buffer)
   ldi ZH, high(input_buffer)
   rcall usart_print
@@ -3382,7 +3376,7 @@ dump_linemap_next:
   rcall usart_tx_bytes_hex
 
   ; restore linemap pointer
-  movw ZL, YL
+  movw ZL, r6
 
   ; see if we've gone off the end of the page
   tst ZL
@@ -4310,7 +4304,7 @@ blink_forever:
 ; inputs:
 ;   r16:r17: number
 ; outputs
-;   X: ascii
+;   Y: ascii
 format_number:
   ldi ZL, low(decades*2)
   ldi ZH, high(decades*2)
@@ -4329,7 +4323,7 @@ format_number:
 
   ; emit leading minus sign
   ldi r18, '-'
-  st X+, r18
+  st Y+, r18
 
 format_number_loop:
   ldi r18, 0x2f ; just before ASCII '0'
@@ -4355,7 +4349,7 @@ format_number_loop:
   breq PC+2
 
   ; emit a digit!
-  st X+, r18
+  st Y+, r18
 
   ; move to next decade
   cpi ZL, low((decades+5)*2)
@@ -4367,11 +4361,11 @@ format_number_loop:
 
   ; ascii zero
   ldi r18, 0x30
-  st X+, r18
+  st Y+, r18
 
   ; trailing zero
   clr r16
-  st X+, r16
+  st Y+, r16
 
   ret
 
