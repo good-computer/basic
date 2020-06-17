@@ -3066,7 +3066,14 @@ list_do_line:
 
   rcall ram_end
 
-  ; XXX format it
+  ; back to start of op buffer
+  ldi ZL, low(op_buffer)
+  ldi ZH, high(op_buffer)
+
+  ; format it
+  rcall format_line
+
+  ; finish up
   ldi r16, 0xa
   st Y+, r16
   ldi r16, 0xd
@@ -4483,6 +4490,93 @@ format_number_loop:
 
 decades:
   .dw 10000, 1000, 100, 10, 1
+
+
+; format an op to text
+; inputs:
+;   Z: start of opline (at initial opcode)
+; outputs:
+;   Y: text output
+format_line:
+
+  ; get the opcode
+  ld r16, Z+
+
+  push ZL
+  push ZH
+
+  ldi ZL, low(keyword_table*2)
+  ldi ZH, high(keyword_table*2)
+  rcall format_token
+
+  pop ZH
+  pop ZL
+
+  ret
+
+
+; format an opcode back to its text token
+; input:
+;   r16: opcode
+;   Z: pointer to start of token table, will be moved
+; outputs:
+;   Y: text output
+format_token:
+
+  ; retain pointer to start of token
+  movw r2, ZL
+
+  ; walk past printables
+  lpm r17, Z+
+
+  ; if its printable, loop
+  cpi r17, 0x20
+  brlo PC+3
+  cpi r17, 0x7f
+  brlo PC-4
+
+  ; now pointed at opcode, does it match?
+  cp r16, r17
+  breq format_token_match
+
+  ; check next for printable
+  lpm r17, Z
+
+  ; null? the end
+  tst r17
+  brne PC+2
+
+  ret
+
+  ; if printable, go around
+  cpi r17, 0x20
+  brlo PC+3
+  cpi r17, 0x7f
+  brlo format_token
+
+  ; not printable, try again
+  adiw ZL, 1
+  rjmp PC-9
+
+format_token_match:
+
+  ; jump back to start of token
+  mov ZL, r2
+
+  ; get char
+  lpm r17, Z+
+
+  ; printable? if not, we're done
+  cpi r17, 0x20
+  brlo PC+5
+  cpi r17, 0x7f
+  brsh PC+3
+
+  ; printable, take it!
+  st Y+, r17
+  rjmp PC-6
+
+  ret
 
 
 ; receive a byte from the usart
