@@ -321,6 +321,10 @@ handle_error:
   ldi YH, high(input_buffer)
   rcall format_number
 
+  ; trailing null
+  clr r16
+  st Y+, r16
+
   ldi ZL, low(input_buffer)
   ldi ZH, high(input_buffer)
   rcall usart_print
@@ -2221,6 +2225,10 @@ print_number:
   ldi YH, high(input_buffer)
   rcall format_number
 
+  ; trailing null
+  clr r16
+  st Y+, r16
+
   ; and print it
   ldi ZL, low(input_buffer)
   ldi ZH, high(input_buffer)
@@ -3059,11 +3067,11 @@ list_do_line:
   rcall ram_end
 
   ; XXX format it
-  clr r16
-  st Y+, r16
   ldi r16, 0xa
   st Y+, r16
   ldi r16, 0xd
+  st Y+, r16
+  clr r16
   st Y+, r16
 
   ; print it
@@ -3444,10 +3452,16 @@ dump_linemap_next:
   ldi YH, high(input_buffer)
   rcall format_number
 
+  ; trailing null
+  clr r16
+  st Y+, r16
+
   ; and print it
   ldi ZL, low(input_buffer)
   ldi ZH, high(input_buffer)
   rcall usart_print
+
+  ; make some room
   ldi r16, ' '
   rcall usart_tx_byte
   rcall usart_tx_byte
@@ -4464,10 +4478,6 @@ format_number_loop:
   ; ascii zero
   ldi r18, 0x30
   st Y+, r18
-
-  ; trailing zero
-  clr r16
-  st Y+, r16
 
   ret
 
