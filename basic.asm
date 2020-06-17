@@ -820,7 +820,7 @@ keyword_subparser_table:
   rjmp st_parse_next     ; 0x09 NEXT var
   rjmp invalid_program   ; 0x0a NEW
   rjmp invalid_program   ; 0x0b CLEAR
-  ret                    ; 0x0c LIST
+  rjmp invalid_program   ; 0x0c LIST
   rjmp invalid_program   ; 0x0d RUN
   rjmp invalid_immediate ; 0x0e END
   ret                    ; 0x0f [ON]
