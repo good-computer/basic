@@ -3067,8 +3067,8 @@ list_do_line:
   rcall ram_end
 
   ; back to start of op buffer
-  ldi ZL, low(op_buffer)
-  ldi ZH, high(op_buffer)
+  ldi XL, low(op_buffer)
+  ldi XH, high(op_buffer)
 
   ; format it
   rcall format_line
@@ -4494,25 +4494,95 @@ decades:
 
 ; format an op to text
 ; inputs:
-;   Z: start of opline (at initial opcode)
+;   X: start of opline (at initial opcode)
 ; outputs:
 ;   Y: text output
 format_line:
 
   ; get the opcode
-  ld r16, Z+
+  ld r16, X+
 
-  push ZL
-  push ZH
+  ; end of line
+  tst r16
+  brne PC+2
+  ret
 
+  ; separator, emit and go again
+  cpi r16, ':'
+  brne PC+3
+
+  st Y+, r16
+  rjmp format_line
+
+  ; format just the keyword
   ldi ZL, low(keyword_table*2)
   ldi ZH, high(keyword_table*2)
   rcall format_token
 
-  pop ZH
-  pop ZL
+  ; setup to format rest of line
+  ldi ZL, low(keyword_format_table)
+  ldi ZH, high(keyword_format_table)
 
+  ; add opcode to get the formatter vector
+  add ZL, r17
+  brcc PC+2
+  inc ZH
+
+  ; call formatter
+  icall
+
+  ; try for next
+  rjmp format_line
+
+keyword_format_table:
+  .dw 0                  ; 0x00 [reserved]
+  rjmp st_format_print   ; 0x01 PRINT expr-list
+  rjmp st_format_if      ; 0x02 IF expression relop expression THEN statement
+  rjmp st_format_goto    ; 0x03 GOTO expression
+  rjmp st_format_input   ; 0x04 INPUT var-list
+  rjmp st_format_let     ; 0x05 LET var = expression
+  rjmp st_format_goto    ; 0x06 GOSUB expression
+  ret                    ; 0x07 RETURN
+  rjmp st_format_for     ; 0x08 FOR var = expression TO expression
+  rjmp st_format_next    ; 0x09 NEXT var
+  ret                    ; 0x0a NEW
+  ret                    ; 0x0b CLEAR
+  ret                    ; 0x0c LIST
+  ret                    ; 0x0d RUN
+  ret                    ; 0x0e END
+  ret                    ; 0x0f [ON]
+  ret                    ; 0x10 [OFF]
+  ret                    ; 0x11 [SLEEP]
+  ret                    ; 0x12 [RESET]
+  ret                    ; 0x13 [CLS]
+  ret                    ; 0x14 [XLOAD]
+  ret                    ; 0x15 [DUMP]
+
+
+st_format_print:
   ret
+
+st_format_if:
+  ret
+
+st_format_goto:
+  ret
+
+st_format_input:
+  ret
+
+st_format_let:
+  ret
+
+st_format_for:
+  ret
+
+st_format_next:
+
+  ldi r16, ' '
+  st Y+, r16
+
+  rjmp format_var
 
 
 ; format an opcode back to its text token
@@ -4575,6 +4645,32 @@ format_token_match:
   ; printable, take it!
   st Y+, r17
   rjmp PC-6
+
+  ret
+
+
+; format variable name
+; input:
+;   X: pointer to var name, will be moved
+; outputs:
+;   Y: text output
+format_var:
+
+  ; get var
+  ld r17, X+
+
+  ; get unadorned letter
+  mov r16, r17
+  andi r16, 0x7f
+  st Y+, r16
+
+  ; check top bit for string var
+  tst r17
+  brpl PC+3
+
+  ; get cash money
+  ldi r16, '$'
+  st Y+, r16
 
   ret
 
