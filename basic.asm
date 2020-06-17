@@ -2978,7 +2978,109 @@ op_clear:
 
 
 op_list:
+
+  push XL
+  push XH
+
+  ; setup ref to current linemap page (high byte)
+  ldi r21, high(linemap_base)
+
+list_linemap_load:
+  ; load page #r21 of the linemap
+  clr r16
+  mov r17, r21
+  ldi r18, 0x0 ; bank 0
+  rcall ram_read_start
+
+  clr ZL
+  ldi ZH, linemap_buffer_h
+  clr r16
+  rcall ram_read_bytes
+  rcall ram_end
+
+  ; reset to start of buffer
+  clr ZL
+  ldi ZH, linemap_buffer_h
+
+list_linemap_next:
+  ; load the stored line number
+  ld r16, Z+
+  ld r17, Z+
+
+  ; if we've found line zero, we're done
+  tst r16
+  brne list_do_line
+  tst r17
+  brne list_do_line
+
+  ; restore oplist pointer
+  pop XH
+  pop XL
+
+  ; abort execution (op buffer has been trampled anyway)
+  sbr r_flags, 1<<f_abort_line
+
   ret
+
+list_do_line:
+  ; load opmem pointer
+  ld r4, Z+
+  ld r5, Z+
+
+  ; save position in linemap
+  movw r6, ZL
+
+  ; ready output pointer, using varmap buffer
+  clr YL
+  ldi YH, varmap_buffer_h
+
+  ; output line number
+  rcall format_number
+
+  ldi r16, ' '
+  st Y+, r16
+
+  ; set up a buffer for the op
+  ldi ZL, low(op_buffer)
+  ldi ZH, high(op_buffer)
+
+  ; load opmem into buffer
+  movw r16, r4
+  ldi r18, 0x0 ; bank 0
+  rcall ram_read_start
+
+  ; read length
+  rcall ram_read_byte
+  mov r18, r16
+
+  ; read the op
+  rcall ram_read_bytes
+
+  rcall ram_end
+
+  ; XXX format it
+  clr r16
+  st Y+, r16
+  ldi r16, 0xa
+  st Y+, r16
+  ldi r16, 0xd
+  st Y+, r16
+
+  ; print it
+  clr ZL
+  ldi ZH, varmap_buffer_h
+  rcall usart_print
+
+  ; restore linemap pointer
+  movw ZL, r6
+
+  ; see if we've gone off the end of the page
+  tst ZL
+  brne list_linemap_next
+
+  ; yep, load the next page
+  inc r21
+  rjmp list_linemap_load
 
 
 op_run:
