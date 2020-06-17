@@ -805,6 +805,8 @@ keyword_table:
                       \
       "XLOAD",  0x14, \
                       \
+      "DUMP",   0x15, \
+                      \
       0
 
 keyword_subparser_table:
@@ -829,6 +831,7 @@ keyword_subparser_table:
   ret                    ; 0x12 [RESET]
   ret                    ; 0x13 [CLS]
   rjmp invalid_program   ; 0x14 [XLOAD]
+  rjmp invalid_program   ; 0x15 [DUMP]
 
 
 invalid_immediate:
@@ -2138,6 +2141,7 @@ op_table:
   rjmp op_reset   ; 0x12 [RESET]
   rjmp op_cls     ; 0x13 [CLS]
   rjmp op_xload   ; 0x14 [XLOAD]
+  rjmp op_dump    ; 0x15 [DUMP]
 
 op_print:
 
@@ -2978,101 +2982,7 @@ op_clear:
 
 
 op_list:
-
-  ; XXX this is very stupid, just hexdumps each line
-
-  ; setup ref to current linemap page (high byte)
-  ldi r21, high(linemap_base)
-
-list_linemap_load:
-  ; load page #r21 of the linemap
-  clr r16
-  mov r17, r21
-  ldi r18, 0x0 ; bank 0
-  rcall ram_read_start
-
-  clr ZL
-  ldi ZH, linemap_buffer_h
-  clr r16
-  rcall ram_read_bytes
-  rcall ram_end
-
-  ; reset to start of buffer
-  clr ZL
-  ldi ZH, linemap_buffer_h
-
-  ; walk the linemap, looking for the right place to put this
-
-list_linemap_next:
-  ; load the stored line number
-  ld r16, Z+
-  ld r17, Z+
-
-  ; if we've found line zero, we're done
-  tst r16
-  brne PC+4
-  tst r17
-  brne PC+2
-
   ret
-
-  ; load opmem pointer
-  ld r4, Z+
-  ld r5, Z+
-
-  ; save position in linemap
-  movw YL, ZL
-
-  ; output line number
-  push XL
-  push XH
-  ldi XL, low(input_buffer)
-  ldi XH, high(input_buffer)
-  rcall format_number
-  pop XH
-  pop XL
-  ldi ZL, low(input_buffer)
-  ldi ZH, high(input_buffer)
-  rcall usart_print
-  ldi r16, ' '
-  rcall usart_tx_byte
-  rcall usart_tx_byte
-
-  ; set up a buffer for the op
-  ldi ZL, low(input_buffer)
-  ldi ZH, high(input_buffer)
-
-  ; load opmem into buffer
-  movw r16, r4
-  ldi r18, 0x0 ; bank 0
-  rcall ram_read_start
-
-  ; read length
-  rcall ram_read_byte
-  mov r18, r16
-
-  ; read the op
-  rcall ram_read_bytes
-
-  rcall ram_end
-
-  ; dump the op
-  ldi ZL, low(input_buffer)
-  ldi ZH, high(input_buffer)
-  mov r16, r18
-  clr r17
-  rcall usart_tx_bytes_hex
-
-  ; restore linemap pointer
-  movw ZL, YL
-
-  ; see if we've gone off the end of the page
-  tst ZL
-  brne list_linemap_next
-
-  ; yep, load the next page
-  inc r21
-  rjmp list_linemap_load
 
 
 op_run:
@@ -3383,6 +3293,104 @@ xload_end_line:
 
   ; loaded!
   ret
+
+
+op_dump:
+
+  ; XXX this is very stupid, just hexdumps each line
+
+  ; setup ref to current linemap page (high byte)
+  ldi r21, high(linemap_base)
+
+dump_linemap_load:
+  ; load page #r21 of the linemap
+  clr r16
+  mov r17, r21
+  ldi r18, 0x0 ; bank 0
+  rcall ram_read_start
+
+  clr ZL
+  ldi ZH, linemap_buffer_h
+  clr r16
+  rcall ram_read_bytes
+  rcall ram_end
+
+  ; reset to start of buffer
+  clr ZL
+  ldi ZH, linemap_buffer_h
+
+  ; walk the linemap, looking for the right place to put this
+
+dump_linemap_next:
+  ; load the stored line number
+  ld r16, Z+
+  ld r17, Z+
+
+  ; if we've found line zero, we're done
+  tst r16
+  brne PC+4
+  tst r17
+  brne PC+2
+
+  ret
+
+  ; load opmem pointer
+  ld r4, Z+
+  ld r5, Z+
+
+  ; save position in linemap
+  movw YL, ZL
+
+  ; output line number
+  push XL
+  push XH
+  ldi XL, low(input_buffer)
+  ldi XH, high(input_buffer)
+  rcall format_number
+  pop XH
+  pop XL
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+  rcall usart_print
+  ldi r16, ' '
+  rcall usart_tx_byte
+  rcall usart_tx_byte
+
+  ; set up a buffer for the op
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+
+  ; load opmem into buffer
+  movw r16, r4
+  ldi r18, 0x0 ; bank 0
+  rcall ram_read_start
+
+  ; read length
+  rcall ram_read_byte
+  mov r18, r16
+
+  ; read the op
+  rcall ram_read_bytes
+
+  rcall ram_end
+
+  ; dump the op
+  ldi ZL, low(input_buffer)
+  ldi ZH, high(input_buffer)
+  mov r16, r18
+  clr r17
+  rcall usart_tx_bytes_hex
+
+  ; restore linemap pointer
+  movw ZL, YL
+
+  ; see if we've gone off the end of the page
+  tst ZL
+  brne dump_linemap_next
+
+  ; yep, load the next page
+  inc r21
+  rjmp dump_linemap_load
 
 
 ; evaluate expression
