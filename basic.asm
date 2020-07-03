@@ -3916,7 +3916,7 @@ div_loop:
   rol  r16            ; shift left dividend
   rol  r17
   dec  r20            ; decrement counter
-  brne PC+8           ; if done
+  brne PC+7           ; if done
   sbrs r4, 7          ;    if MSB in sign register set
   rjmp PC+4
   com  r17            ;        change sign of result
