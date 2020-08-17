@@ -6,7 +6,7 @@ clean:
 	-rm -f *.hex *.cof *.obj
 
 install: all
-	avrdude -v -c arduino -P /dev/ttyACM0 -p m8 -U flash:w:$(PROGRAM).hex:i
+	avrdude -v -c arduino -P /dev/ttyACM0 -p m88p -U flash:w:$(PROGRAM).hex:i
 
 %.hex: %.asm
 	avra $<

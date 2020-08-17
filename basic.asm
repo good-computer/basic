@@ -1,27 +1,8 @@
 ; vim: ft=avr
 
-;.device ATmega8
-.include "m8def.inc"
+.include "m88def.inc"
 
 ; XXX I wonder if there's a better way to set up a memory map
-
-; input buffer
-.equ input_buffer     = 0x0060
-.equ input_buffer_end = 0x00df
-
-; expression stack
-.equ expr_stack     = 0x00e0
-.equ expr_stack_end = 0x00ef
-
-; external ram tracking
-.equ opmem_top_l   = 0x00fa ; top of opmem (position of next instruction)
-.equ opmem_top_h   = 0x00fb
-.equ varmem_top_l  = 0x00fc ; top of varmem (position of next value)
-.equ varmem_top_h  = 0x00fd
-
-; rng state
-.equ rand_l = 0x00fe
-.equ rand_h = 0x00ff
 
 ; location in internal memory for current linemap page (high byte)
 .equ linemap_buffer_h = high(0x100)
@@ -40,11 +21,30 @@
 .equ gosub_stack_end = 0x03ff
 
 ; for/next state
-.equ for_buffer     = 0x400
-.equ for_buffer_end = 0x41f
+.equ for_buffer     = 0x0400
+.equ for_buffer_end = 0x041f
+
+; input buffer
+.equ input_buffer     = 0x0420
+.equ input_buffer_end = 0x049f
+
+; expression stack
+.equ expr_stack     = 0x04a0
+.equ expr_stack_end = 0x04af
+
+; external ram tracking
+.equ opmem_top_l   = 0x04b0 ; top of opmem (position of next instruction)
+.equ opmem_top_h   = 0x04b1
+.equ varmem_top_l  = 0x04b2 ; top of varmem (position of next value)
+.equ varmem_top_h  = 0x04b3
+
+; rng state
+.equ rand_l = 0x04b4
+.equ rand_h = 0x04b5
+
 
 ; stack top
-.equ stack_top = 0x045f
+.equ stack_top = 0x04ff
 
 
 ; location in external memory of op lists (bank 0)
@@ -173,6 +173,20 @@
 
 reset:
 
+  ; clear reset state and disable watchdog
+  cli
+  wdr
+  in r16, MCUSR
+  cbr r16, (1<<WDRF)
+  out MCUSR, r16
+  lds r16, WDTCSR
+  lds r16, WDTCSR
+  sbr r16, (1<<WDCE) | (1<<WDE)
+  sts WDTCSR, r16
+  cbr r16, (1<<WDE)
+  sts WDTCSR, r16
+  sei
+
   ; XXX DEBUG clear memory
   ldi XL, low(SRAM_START)
   ldi XH, high(SRAM_START)
@@ -193,28 +207,32 @@ reset:
   out SPH, r17
 
   ; usart tx/rx enable
-  ldi r16, (1<<RXEN | 1<<TXEN)
-  out UCSRB, r16
+  ldi r16, (1<<RXEN0) | (1<<TXEN0)
+  sts UCSR0B, r16
 
-  ; usart frame config: 8N1 (8 data bits => UCSZ2:0 = 011)
-  ldi r16, (1<<URSEL) | (1<<UCSZ0) | (1<<UCSZ1)
-  out UCSRC, r16
+  ; usart frame format: 8N1 (8 data bits => UCSZ2:0 = 011, no parity => UPM1:0 = 00, 1 stop bit => USBS = 0)
+  ldi r16, (1<<UCSZ00) | (1<<UCSZ01)
+  sts UCSR0C, r16
 
   ; usart 38400 baud at 16MHz => UBRR = 25
   ldi r16, 25
   ldi r17, 0
-  out UBRRL, r16
-  out UBRRH, r17
+  sts UBRR0L, r16
+  sts UBRR0H, r17
 
-  ; output: PB0 = error LED, PB1 = user LED
+  ; output: PB0 = error LED
   ;         PB2 = SPI /SS (SRAM /CS), PB3 = SPI MOSI, PB5 = SPI SCK
   ; input: PB4 = SPI MISO
-  ; don't care: PB7
-  ldi r16, (1<<PB0) | (1<<PB1) | (1<<PB2) | (1<<PB3) | (1<<PB5)
+  ; don't care: PB1, PB7
+  ldi r16, (1<<PB0) | (1<<PB2) | (1<<PB3) | (1<<PB5)
   out DDRB, r16
   ; drive SPI /SS high to disable it
   ldi r16, (1<<PB2)
   out PORTB, r16
+
+  ; output: PD7 = user LED
+  ldi r16, (1<<PD7)
+  out DDRD, r16
 
   ; enable SPI, master mode, clock rate fck/4 (4MHz)
   ldi r16, (1<<SPE) | (1<<MSTR)
@@ -3120,11 +3138,11 @@ op_end:
 
 
 op_on:
-  sbi PORTB, PB1
+  sbi PORTD, PD7
   ret
 
 op_off:
-  cbi PORTB, PB1
+  cbi PORTD, PD7
   ret
 
 op_sleep:
@@ -3145,7 +3163,7 @@ op_reset:
   ; enable watchdog timer to force reset in ~16ms
   cli
   ldi r16, (1<<WDE)
-  out WDTCR, r16
+  sts WDTCSR, r16
   rjmp PC
 
 
@@ -3162,13 +3180,13 @@ op_xload:
 
   ; CTC mode, /1024 prescaler
   ldi r16, (1<<WGM12)|(1<<CS12)|(1<<CS10)
-  out TCCR1B, r16
+  sts TCCR1B, r16
 
   ; ~2-3s
   ldi r16, low(0xb718)
   ldi r17, high(0xb718)
-  out OCR1AH, r17
-  out OCR1AL, r16
+  sts OCR1AH, r17
+  sts OCR1AL, r16
 
   ; 10 tries
   ldi r17, 10
@@ -3180,22 +3198,24 @@ xload_try_handshake:
 
   ; clear counter
   clr r16
-  out TCNT1H, r16
-  out TCNT1L, r16
+  sts TCNT1H, r16
+  sts TCNT1L, r16
 
   ; loop until timer expires, or usart becomes readable
-  in r16, TIFR
+xload_timer_wait:
+  in r16, TIFR1
   sbrc r16, OCF1A
   rjmp xload_timer_expired
-  sbic UCSRA, RXC
+  lds r18, UCSR0A
+  sbrc r18, RXC0
   rjmp xload_ready
-  rjmp PC-5
+  rjmp xload_timer_wait
 
 xload_timer_expired:
 
   ; acknowledge timer
   ldi r16, (1<<OCF1A)
-  out TIFR, r16
+  out TIFR1, r16
 
   ; out of tries?
   dec r17
@@ -3203,7 +3223,7 @@ xload_timer_expired:
 
   ; disable timer
   clr r16
-  out TCCR1B, r16
+  sts TCCR1B, r16
 
   ldi r_error, error_transfer_error
   ret
@@ -3212,7 +3232,7 @@ xload_ready:
 
   ; disable timer
   clr r16
-  out TCCR1B, r16
+  sts TCCR1B, r16
 
   ; ok, we're really doing this. set up to recieve
 
@@ -3257,11 +3277,11 @@ xload_rx_packet:
   ; take a byte
   rcall usart_rx_byte
 
-  ; store it
-  rcall ram_write_byte
-
   ; add to checksum
   add r17, r16
+
+  ; store it
+  rcall ram_write_byte
 
   ; advance RAM tracking pointer
   adiw ZL, 1
@@ -4679,11 +4699,10 @@ format_var:
 ; outputs:
 ;   r16: received byte
 usart_rx_byte:
-  sbis UCSRA, RXC
-  rjmp PC-1
-
-  in r16, UDR
-
+  lds r16, UCSR0A
+  sbrs r16, RXC0
+  rjmp PC-3
+  lds r16, UDR0
   ret
 
 
@@ -4693,9 +4712,10 @@ usart_rx_byte:
 ;   r16: received byte, if there was one
 usart_rx_byte_maybe:
   clt
-  sbis UCSRA, RXC
+  lds r16, UCSR0A
+  sbrs r16, RXC0
   ret
-  in r16, UDR
+  lds r16, UDR0
   set
   ret
 
@@ -4704,11 +4724,12 @@ usart_rx_byte_maybe:
 ; inputs:
 ;   r16: byte to send
 usart_tx_byte:
-  sbis UCSRA, UDRE
-  rjmp PC-1
-
-  out UDR, r16
-
+  push r16
+  lds r16, UCSR0A
+  sbrs r16, UDRE0
+  rjmp PC-3
+  pop r16
+  sts UDR0, r16
   ret
 
 
@@ -4925,19 +4946,23 @@ ram_start:
 
   ; send command
   out SPDR, r19
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r19, SPSR
+  sbrs r19, SPIF
+  rjmp PC-2
 
   ; send address
   out SPDR, r18
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r19, SPSR
+  sbrs r19, SPIF
+  rjmp PC-2
   out SPDR, r17
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r19, SPSR
+  sbrs r19, SPIF
+  rjmp PC-2
   out SPDR, r16
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r19, SPSR
+  sbrs r19, SPIF
+  rjmp PC-2
 
   ret
 
@@ -4951,8 +4976,9 @@ ram_end:
 ;   Z: where to store it
 ram_read_bytes:
   out SPDR, r16
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r17, SPSR
+  sbrs r17, SPIF
+  rjmp PC-2
   in r17, SPDR
   st Z+, r17
   dec r16
@@ -4963,8 +4989,9 @@ ram_read_bytes:
 ;   r16: byte read
 ram_read_byte:
   out SPDR, r16
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r16, SPSR
+  sbrs r16, SPIF
+  rjmp PC-2
   in r16, SPDR
   ret
 
@@ -4972,12 +4999,14 @@ ram_read_byte:
 ;   r16:r17: byte pair read
 ram_read_pair:
   out SPDR, r16
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r16, SPSR
+  sbrs r16, SPIF
+  rjmp PC-2
   in r16, SPDR
   out SPDR, r17
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r17, SPSR
+  sbrs r17, SPIF
+  rjmp PC-2
   in r17, SPDR
   ret
 
@@ -4987,8 +5016,9 @@ ram_read_pair:
 ram_write_bytes:
   ld r17, Z+
   out SPDR, r17
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r17, SPSR
+  sbrs r17, SPIF
+  rjmp PC-2
   dec r16
   brne ram_write_bytes
   ret
@@ -4997,8 +5027,9 @@ ram_write_bytes:
 ;   r16: byte to write
 ram_write_byte:
   out SPDR, r16
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r16, SPSR
+  sbrs r16, SPIF
+  rjmp PC-2
   ret
 
 ; write two bytse to SRAM, previously set up with ram_write_start
@@ -5006,11 +5037,13 @@ ram_write_byte:
 ;   r17: second byte to write
 ram_write_pair:
   out SPDR, r16
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r16, SPSR
+  sbrs r16, SPIF
+  rjmp PC-2
   out SPDR, r17
-  sbis SPSR, SPIF
-  rjmp PC-1
+  in r17, SPSR
+  sbrs r17, SPIF
+  rjmp PC-2
   ret
 
 
