@@ -1,4 +1,9 @@
-; vim: ft=avr
+; GOOD COMPUTER: BASIC interpreter
+; Copyright (c) 2020 Rob Norris
+
+; This Source Code Form is subject to the terms of the Mozilla Public
+; License, v. 2.0. If a copy of the MPL was not distributed with this
+; file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 .include "m88def.inc"
 
@@ -5110,3 +5115,5 @@ text_error_transfer_error:
   .db "TRANSFER ERROR", 0
 text_error_break:
   .db "BREAK", 0
+
+; vim: ft=avr

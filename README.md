@@ -28,4 +28,4 @@ Maybe! This is mostly a fun low-overhead project, so I'm not super interested in
 
 ## Copyright & License
 
-© 2020 Rob Norris. [GPLv3](COPYING)
+© 2020 Rob Norris. [MPLv2](LICENSE)
