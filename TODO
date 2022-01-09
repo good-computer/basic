@@ -15,7 +15,6 @@ execute mainloop:
 
 functions:
   INT
-  RND
   TAB
 
 keywords:
