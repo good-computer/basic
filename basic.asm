@@ -4594,7 +4594,22 @@ st_format_goto:
   ret
 
 st_format_input:
+
+  ldi r16, ' '
+  st Y+, r16
+
+  rcall format_var
+
+  ld r16, X
+  tst r16
+  brne PC+2
+
   ret
+
+  ldi r16, ','
+  st Y+, r16
+
+  rjmp PC-7
 
 st_format_let:
   ret
