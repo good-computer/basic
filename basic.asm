@@ -225,19 +225,15 @@ reset:
   sts UBRR0L, r16
   sts UBRR0H, r17
 
-  ; output: PB0 = error LED
+  ; output: PB0 = error LED, PB1 = user LED
   ;         PB2 = SPI /SS (SRAM /CS), PB3 = SPI MOSI, PB5 = SPI SCK
   ; input: PB4 = SPI MISO
-  ; don't care: PB1, PB7
-  ldi r16, (1<<PB0) | (1<<PB2) | (1<<PB3) | (1<<PB5)
+  ; don't care: PB7
+  ldi r16, (1<<PB0) | (1<<PB1) | (1<<PB2) | (1<<PB3) | (1<<PB5)
   out DDRB, r16
   ; drive SPI /SS high to disable it
   ldi r16, (1<<PB2)
   out PORTB, r16
-
-  ; output: PD7 = user LED
-  ldi r16, (1<<PD7)
-  out DDRD, r16
 
   ; enable SPI, master mode, clock rate fck/4 (4MHz)
   ldi r16, (1<<SPE) | (1<<MSTR)
@@ -3143,11 +3139,11 @@ op_end:
 
 
 op_on:
-  sbi PORTD, PD7
+  sbi PORTB, PB1
   ret
 
 op_off:
-  cbi PORTD, PD7
+  cbi PORTB, PB1
   ret
 
 op_sleep:
