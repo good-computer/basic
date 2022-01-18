@@ -830,6 +830,8 @@ keyword_table:
                       \
       "DUMP",   0x15, \
                       \
+      "HWINFO", 0x16, \
+                      \
       0
 
 keyword_subparser_table:
@@ -855,6 +857,7 @@ keyword_subparser_table:
   ret                    ; 0x13 [CLS]
   rjmp invalid_program   ; 0x14 [XLOAD]
   rjmp invalid_program   ; 0x15 [DUMP]
+  rjmp invalid_program   ; 0x16 [HWINFO]
 
 
 invalid_immediate:
@@ -2165,6 +2168,7 @@ op_table:
   rjmp op_cls     ; 0x13 [CLS]
   rjmp op_xload   ; 0x14 [XLOAD]
   rjmp op_dump    ; 0x15 [DUMP]
+  rjmp op_hwinfo  ; 0x16 [HWINFO]
 
 op_print:
 
@@ -3531,6 +3535,124 @@ dump_linemap_next:
   rjmp dump_linemap_load
 
 
+op_hwinfo:
+  push XL
+  push XH
+
+  ldi XL, low(string_buffer)
+  ldi XH, high(string_buffer)
+
+  clr ZL
+  clr ZH
+
+  ; bit 5 is SIGRD, undocumented for m88p but standard in all modern AVR cores
+  ldi r16, (1<<5) | (1<<SELFPRGEN)
+  out SPMCSR, r16
+
+  lpm r17, Z+
+  st X+, r17
+
+  cpi ZL, 0x18
+  brne PC-5
+
+  clr ZL
+  clr ZH
+
+  ldi r16, (1<<BLBSET) | (1<<SELFPRGEN)
+  out SPMCSR, r16
+
+  lpm r17, Z+
+  st X+, r17
+
+  cpi ZL, 0x04
+  brne PC-5
+
+  ; signature
+  ldi ZL, low(text_signature*2)
+  ldi ZH, high(text_signature*2)
+  rcall usart_print_static
+
+  lds r16, string_buffer+0x00
+  rcall usart_tx_byte_hex
+  lds r16, string_buffer+0x02
+  rcall usart_tx_byte_hex
+  lds r16, string_buffer+0x04
+  rcall usart_tx_byte_hex
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rcall usart_print_static
+
+  ; serial
+  ldi ZL, low(text_serial*2)
+  ldi ZH, high(text_serial*2)
+  rcall usart_print_static
+
+  ldi XL, low(string_buffer+0x0e)
+  ldi XH, high(string_buffer+0x0e)
+  ld r16, X+, 
+  rcall usart_tx_byte_hex
+  cpi XL, 0x18
+  brne PC-3
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rcall usart_print_static
+
+  ; lockbits
+  ldi ZL, low(text_lockbits*2)
+  ldi ZH, high(text_lockbits*2)
+  rcall usart_print_static
+
+  lds r16, string_buffer+0x19
+  rcall usart_tx_byte_hex
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rcall usart_print_static
+
+  ; lfuse
+  ldi ZL, low(text_lfuse*2)
+  ldi ZH, high(text_lfuse*2)
+  rcall usart_print_static
+
+  lds r16, string_buffer+0x18
+  rcall usart_tx_byte_hex
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rcall usart_print_static
+
+  ; hfuse
+  ldi ZL, low(text_hfuse*2)
+  ldi ZH, high(text_hfuse*2)
+  rcall usart_print_static
+
+  lds r16, string_buffer+0x1b
+  rcall usart_tx_byte_hex
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rcall usart_print_static
+
+  ; efuse
+  ldi ZL, low(text_efuse*2)
+  ldi ZH, high(text_efuse*2)
+  rcall usart_print_static
+
+  lds r16, string_buffer+0x1a
+  rcall usart_tx_byte_hex
+
+  ldi ZL, low(text_newline*2)
+  ldi ZH, high(text_newline*2)
+  rcall usart_print_static
+
+  pop XH
+  pop XL
+
+  ret
+
+
 ; evaluate expression
 ; inputs:
 ;   X: expression op
@@ -4578,6 +4700,7 @@ keyword_format_table:
   ret                    ; 0x13 [CLS]
   ret                    ; 0x14 [XLOAD]
   ret                    ; 0x15 [DUMP]
+  ret                    ; 0x16 [HWINFO]
 
 
 st_format_print:
@@ -5126,5 +5249,18 @@ text_error_transfer_error:
   .db "TRANSFER ERROR", 0
 text_error_break:
   .db "BREAK", 0
+
+text_signature:
+  .db "signature: ", 0
+text_serial:
+  .db "   serial: ", 0
+text_lockbits:
+  .db " lockbits: ", 0
+text_lfuse:
+  .db "    lfuse: ", 0
+text_hfuse:
+  .db "    hfuse: ", 0
+text_efuse:
+  .db "    efuse: ", 0
 
 ; vim: ft=avr
